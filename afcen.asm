@@ -4,13 +4,19 @@ prog segment
 main: 
 	jmp begin
 
+; constants
+len equ 80
+lf equ 0ah
+
 ; variables
 in_handle dw ?
 out_handle dw ?
-buffer db 80, ?, 80 dup (?)
+buffer db len, ?, len dup (?)
+spaces db len dup(' ')
+counter db 0
 
 ;macro
-open_file macro file_name_offset, handle_
+open_file macro file_name_offset, handle_, error_lablel
 	local ok 
 	push ax
 	push dx
@@ -18,7 +24,7 @@ open_file macro file_name_offset, handle_
 		mov dx, file_name_offset
 		int 21h
 		jnc ok
-			jmp error
+			jmp error_lablel
 		ok:
 			mov handle_, ax
 	pop dx
@@ -45,10 +51,10 @@ open_file_from_arg_line macro handle_
 		jmp c2
 
 		res:
-			mov byte ptr [di], 0
-			open_file si, handle_
-			mov si, di
-			inc si
+		mov byte ptr [di], 0
+		open_file si, handle_, error
+		mov si, di
+		inc si
 	pop di
 endm
 
@@ -57,9 +63,38 @@ open_file_from_keyboard macro msg, buff, handle_
 		puts msg
 		gets_z buff
 		mov si, offset buff + 2
-		open_file si, handle_
+		open_file si, handle_, error
 		newline
 	pop si
+endm
+
+read_file_line macro buff, count
+	local rchar, endr
+	push ax
+	push bx
+	push dx
+	push si
+		mov count, 0
+		mov dx, offset buff
+		dec dx
+		mov si, dx
+		mov cx, 1
+		rchar:
+			inc dx
+			mov ah, 3fh
+			int 21h
+			cmp al, 0 
+			je endr
+			inc count
+			inc si
+		cmp byte ptr [si], lf
+		je endr
+		jmp rchar
+	endr:
+	pop si
+	pop dx
+	pop bx
+	pop ax
 endm
 
 ; main
@@ -76,19 +111,60 @@ begin:
 		
 		cmp byte ptr [si], 0
 		jne second_from_arg
-		jmp second_from_keyboard
+		jmp no_second
 
 		second_from_arg:
 		open_file_from_arg_line out_handle
 		jmp work
 
+		no_second:
+			mov ax, in_handle
+			mov out_handle, ax
+			jmp work
+
 	no_args:
 		open_file_from_keyboard "enter source file name > ", buffer, in_handle
-		second_from_keyboard:
 		open_file_from_keyboard "enter destination file name > ", buffer, out_handle
 
 	work:
 		puts "files successfuly opened!"
+		newline
+
+		next_line:
+			mov bx, in_handle
+			read_file_line buffer, counter
+			cmp counter, 0
+			je end_of_line_process
+
+			puts "line: "
+			xor bh, bh
+			mov bl, counter
+			mov buffer[bx], '$'
+			mov ah, 09h
+			mov dx, offset buffer
+			int 21h
+			newline
+			
+			xor ah, ah
+			xor ch, ch
+			mov al, len  
+			sub al, counter
+			mov bl, 2
+			div bl
+
+			mov bx, out_handle
+			mov cl, al
+			mov ah, 40h
+			mov dx, offset spaces
+			int 21h
+			
+			mov cl, counter
+			mov ah, 40h
+			mov dx, offset buffer
+			int 21h
+
+		jmp next_line	
+		end_of_line_process:
 		jmp exit
 
 	error:
@@ -96,8 +172,9 @@ begin:
 		puts "failed open file!"
 
 	exit:
+		newline
+		puts "exit"
 		mov ax, 4c00h
 		int 21h
-	
 prog ends
 end main
