@@ -10,49 +10,6 @@ out_handle dw ?
 buffer db 80, ?, 80 dup (?)
 
 ;macro
-skip_spaces macro
-	local next, ok
-	dec si
-	next:
-		inc si
-		cmp byte ptr [si], 20h
-		je next
-endm
-
-move_ptr_after_str macro str_start
-	local next, res
-	push di
-		mov di, str_start
-		dec di
-		next:
-			inc di
-			cmp byte ptr [di], 20h
-			je res
-			cmp byte ptr [di], 0
-			je res
-			jmp next
-		res:
-		inc di
-		mov str_start, di
-	pop di
-endm
-
-put_zero_after_str macro str_start
-	local next, res
-	push di
-		mov di, str_start
-		dec di
-		next:
-			inc di
-			cmp byte ptr [di], 20h
-			je res
-			cmp byte ptr [di], 0dh
-			je res
-			jmp next     
-		res:
-			mov byte ptr [di], 0
-endm
-
 open_file macro file_name_offset, handle_
 	local ok 
 	push ax
@@ -68,6 +25,43 @@ open_file macro file_name_offset, handle_
 	pop ax
 endm
 
+open_file_from_arg_line macro handle_
+	local c1, c2, ok, res
+	push di
+		dec si
+		c1:
+			inc si
+			cmp byte ptr [si], 20h
+		je c1
+
+		mov di, si
+		dec di
+		c2:
+			inc di
+			cmp byte ptr [di], 20h
+			je res
+			cmp byte ptr [di], 0dh
+			je res
+		jmp c2
+
+		res:
+			mov byte ptr [di], 0
+			open_file si, handle_
+			mov si, di
+			inc si
+	pop di
+endm
+
+open_file_from_keyboard macro msg, buff, handle_
+	push si
+		puts msg
+		gets_z buff
+		mov si, offset buff + 2
+		open_file si, handle_
+		newline
+	pop si
+endm
+
 ; main
 begin:
 	include tmacro.lib
@@ -78,42 +72,27 @@ begin:
 
 	cmd_args:
 		mov si, 81h
-		skip_spaces
-		put_zero_after_str si 
-		open_file si, in_handle
-		move_ptr_after_str si
+		open_file_from_arg_line in_handle
 		
 		cmp byte ptr [si], 0
-		jne second_file
-			jmp second_from_keyboard
+		jne second_from_arg
+		jmp second_from_keyboard
 
-		second_file:
-		skip_spaces
-		put_zero_after_str si
-		open_file si, out_handle
+		second_from_arg:
+		open_file_from_arg_line out_handle
 		jmp work
 
 	no_args:
-		puts "enter source file name > "
-		newline
-		gets_z buffer
-		mov si, offset buffer + 2
-		open_file si, in_handle
-		newline
-
+		open_file_from_keyboard "enter source file name > ", buffer, in_handle
 		second_from_keyboard:
-		puts "enter destination file name > "
-		newline
-		gets_z buffer
-		mov si, offset buffer + 2
-		open_file si, out_handle
-		newline
+		open_file_from_keyboard "enter destination file name > ", buffer, out_handle
 
 	work:
 		puts "files successfuly opened!"
 		jmp exit
 
 	error:
+		newline
 		puts "failed open file!"
 
 	exit:
