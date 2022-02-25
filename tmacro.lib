@@ -1,0 +1,94 @@
+puts macro str
+    local s, body
+    jmp body
+    s db str, '$'
+    body:  
+    push ax
+    push dx 
+        mov ah, 09h
+        mov dx, offset s
+        int 21h        
+    pop dx
+    pop ax
+endm 
+
+gets_z macro var_name
+    push ax
+    push dx
+    push bx
+        mov ah, 0ah
+        mov dx, offset var_name
+        int 21h
+        xor bh, bh
+        mov bl, var_name[1]
+        mov byte ptr var_name[bx + 2], 0
+    pop bx
+    pop dx
+    pop ax
+endm 
+
+newline macro 
+    push ax
+    push dx 
+        mov ah, 02h
+        mov dl, 13
+        int 21h   
+        mov dl, 10
+        int 21h     
+    pop dx
+    pop ax
+endm 
+
+print_byte macro byte_
+    local body, digits
+    jmp body
+        digits db '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'
+    body:
+    push ax
+    push dx 
+    push bx
+        xor bh, bh
+        mov bl, byte_
+        shr bl, 4
+        mov dl, digits[bx]
+        mov ah, 02h
+        int 21h
+        mov bl, byte_
+        and bl, 0fh
+        mov dl, digits[bx]
+        int 21h   
+    pop bx  
+    pop dx
+    pop ax
+endm
+
+print_word macro word_
+    push cx
+        mov cx, word_
+        print_byte ch
+        print_byte cl
+    pop cx
+endm
+
+saved_state equ 16
+
+save_state macro 
+    push ax
+    push bx  
+    push cx 
+    push dx
+    push si
+    push di 
+    push bp        
+endm  
+
+recover_state macro
+    pop bp
+    pop di
+    pop si  
+    pop dx
+    pop cx
+    pop bx
+    pop ax 
+endm
+
