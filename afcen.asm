@@ -13,7 +13,6 @@ in_handle dw ?
 out_handle dw ?
 buffer db len, ?, len dup (?)
 spaces db len dup(' ')
-counter db 0
 
 ;macro
 open_file macro file_name_offset, handle_, error_lablel
@@ -68,15 +67,16 @@ open_file_from_keyboard macro msg, buff, handle_
 	pop si
 endm
 
-read_file_line macro buff, count
+read_file_line macro buff
 	local rchar, endr
 	push ax
 	push bx
 	push dx
 	push si
-		mov count, 0
-		mov dx, offset buff
-		dec dx
+	push di
+		mov di, offset buff + 1
+		mov byte ptr [di], 0
+		mov dx, di
 		mov si, dx
 		mov cx, 1
 		rchar:
@@ -85,12 +85,13 @@ read_file_line macro buff, count
 			int 21h
 			cmp al, 0 
 			je endr
-			inc count
+			inc byte ptr [di]
 			inc si
 		cmp byte ptr [si], lf
 		je endr
 		jmp rchar
 	endr:
+	pop di
 	pop si
 	pop dx
 	pop bx
@@ -132,23 +133,24 @@ begin:
 
 		next_line:
 			mov bx, in_handle
-			read_file_line buffer, counter
-			cmp counter, 0
+			
+			read_file_line buffer
+
+			cmp buffer[1], 0
 			je end_of_line_process
 
 			puts "line: "
 			xor bh, bh
-			mov bl, counter
-			mov buffer[bx], '$'
+			mov bl, buffer[1]
+			mov buffer[bx + 2], '$'
 			mov ah, 09h
-			mov dx, offset buffer
+			mov dx, offset buffer + 2
 			int 21h
-			newline
 			
 			xor ah, ah
 			xor ch, ch
 			mov al, len  
-			sub al, counter
+			sub al, buffer[1]
 			mov bl, 2
 			div bl
 
@@ -158,9 +160,9 @@ begin:
 			mov dx, offset spaces
 			int 21h
 			
-			mov cl, counter
+			mov cl, buffer[1]
 			mov ah, 40h
-			mov dx, offset buffer
+			mov dx, offset buffer + 2
 			int 21h
 
 		jmp next_line	
