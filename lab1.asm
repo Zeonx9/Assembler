@@ -163,55 +163,62 @@ begin:
 		mov out1_pos, offset out1buf
 		mov out2_pos, offset out2buf
 		mov cx, inbuf_size
-		process_file:
-			mov al, ' '
-			mov di, in_pos
-			repe scasb 				; skip spaces
-			cmp cx, 0 				; if eof go to write
-			je write			
-				dec di 				; move to previous byte
+
+	process_file:
+		mov al, ' '
+		mov di, in_pos
+		repe scasb 				; skip spaces
+		cmp cx, 0 				; if eof go to write
+		je write			
+			dec di 				; move to previous byte
+			inc cx
+			push cx 			; save remain file len in stack
+			mov in_pos, di
+			repne scasb 		; find end of word
+			cmp cx, 0 			; if eof go increment cx
+			je count_word_len
 				inc cx
-				push cx 			; save remain file len in stack
-				mov in_pos, di
-				repne scasb 		; find end of word
-				cmp cx, 0 			; if eof go increment cx
-				je count_word_len
-					inc cx
-					dec di
-				count_word_len:
-				mov ax, cx
-				pop cx 				; get ramain file len and push it back
-				push ax
-				sub cx, ax 			; count length of word
-				push cx 			; save len of word in stack
-				mov cx, num_of_vows
-				xor bx, bx
-				mov si, in_pos 		; pointer to first letter
-				check_first_letter:
-					mov dl, vowels[bx]
-					cmp byte ptr [si], dl 					; go to section by type of current symbol 
-					je vowel
-					inc bx
-				loop check_first_letter
-				jmp consonant
-				vowel:
-					put_word_in_buff out1b_size, out1_pos	; copy word in buff, put space after it
-					jmp contine_process
-				consonant:
-					put_word_in_buff out2b_size, out2_pos 
-				contine_process:
-					mov in_pos, si ; save current possiton
-					pop cx 
-					cmp cx, 0      ; if eof go to write
-					je write
-					jmp process_file
-		write:
+				dec di
+
+			count_word_len:
+			mov ax, cx
+			pop cx 				; get ramain file len and push it back
+			push ax
+			sub cx, ax 			; count length of word
+			push cx 			; save len of word in stack
+
+			mov cx, num_of_vows
+			xor bx, bx
+			mov si, in_pos 		; pointer to first letter
+			check_first_letter:
+				mov dl, vowels[bx]
+				cmp byte ptr [si], dl 					; go to section by type of current symbol 
+				je vowel
+				inc bx
+			loop check_first_letter
+			jmp consonant
+
+			vowel:
+				put_word_in_buff out1b_size, out1_pos	; copy word in buff, put space after it
+				jmp contine_process
+			consonant:
+				put_word_in_buff out2b_size, out2_pos 
+				
+			contine_process:
+				mov in_pos, si ; save current possiton
+				pop cx 
+				cmp cx, 0      ; if eof go to write
+				je write
+				jmp process_file
+
+	write:
 		msg_print s_prc 							; print prc msg
 		print_buffer out1b_size, out1buf			; print vowels buffer
 		print_buffer out2b_size, out2buf			; print consonants buffer
 		fout_write handle_out1, out1b_size, out1buf ; write to file with vowels
 		fout_write handle_out2, out2b_size, out2buf ; write to file with consonants	
 		jmp exit
+
 	error:
 		msg_print s_err ; print error msg
 	exit:
