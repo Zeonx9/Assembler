@@ -68,7 +68,7 @@ main:
 
 		mov ah, 3fh
 		mov bx, handle_in
-		mov cx, 400h
+		mov cx, buf_len
 		lea dx, inbuf
 		int 21h ; read all from file
 		mov inbuf_size, ax
