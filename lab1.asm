@@ -142,27 +142,27 @@ begin:
 		msg_print nl 
 		print_buffer inbuf_size, inbuf 		; print input buffer
 
-		lea di, inbuf - 1
-		mov cx, inbuf_size
-		replace_non_letters:	; all non-letter characters are replaced to spaces
-			inc di 
-			cmp byte ptr [di], 'A'
-			jl replace
-			cmp byte ptr [di], 'z'
-			jg replace
-			cmp byte ptr [di], 'Z'
-			jle no_replace
-			cmp byte ptr [di], 'a'
-			jge no_replace
-			replace:
-				mov byte ptr [di], ' '
-			no_replace:
-		loop replace_non_letters
+	lea di, inbuf - 1
+	mov cx, inbuf_size
+	replace_non_letters:	; all non-letter characters are replaced to spaces
+		inc di 
+		cmp byte ptr [di], 'A'
+		jl replace
+		cmp byte ptr [di], 'z'
+		jg replace
+		cmp byte ptr [di], 'Z'
+		jle no_replace
+		cmp byte ptr [di], 'a'
+		jge no_replace
+		replace:
+			mov byte ptr [di], ' '
+		no_replace:
+	loop replace_non_letters
 
-		mov in_pos, offset inbuf
-		mov out1_pos, offset out1buf
-		mov out2_pos, offset out2buf
-		mov cx, inbuf_size
+	mov in_pos, offset inbuf
+	mov out1_pos, offset out1buf
+	mov out2_pos, offset out2buf
+	mov cx, inbuf_size
 
 	process_file:
 		mov al, ' '
