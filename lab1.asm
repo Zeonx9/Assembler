@@ -4,82 +4,56 @@ prog segment
 main:  
 jmp begin
 
-; consts
-buf_len equ 1000h
-
-; messages
-s_exit  db "exit", 13, 10, '$'
-s_ok    db "files opened", 13, 10, '$'
-s_err   db "error", 13, 10, '$' 
-s_srcf  db "enter source file name > ", '$'
-s_rdok  db "input file has been read :", 13, 10, '$' 
-s_prc   db "file has been processed :", 13, 10, '$'
-s_fprmt db "enter file name > ", '$'
-nl 		db 0dh, 0ah, '$'
+; struc
+File struc
+	handle 	dw ?
+	len		dw 0
+	pos		dw 0 
+	fbuf 	db 1000h dup (?)
+File ends
 
 ; variables 
-file_name   db 80, ?, 80 dup (?)
-inbuf       db buf_len dup (?)
-out1buf     db buf_len dup (?)
-out2buf		db buf_len dup (?)
-out1_name 	db "vowel.txt", 0
-out2_name 	db "cons.txt", 0
+inp_file File <>
+vow_file File <>
+con_file File <>
+inp_fname   db 80, ?, 80 dup (?)
+vow_fname 	db "vowel.txt", 0
+con_fname 	db "cons.txt", 0
 vowels		db "aeouiyAEOIUY"
 num_of_vows dw $ - vowels
-handle_in  	dw ?
-handle_out1 dw ?
-handle_out2 dw ?
-in_pos		dw ?
-out1_pos	dw ?
-out2_pos	dw ?
-inbuf_size  dw 0
-out1b_size  dw 0
-out2b_size  dw 0
+newline		db 0dh, 0ah, '$'
 
-;macro
-fout_open macro fname, handle
-	local ok
-	mov ax, 3d01h
-	lea dx, fname
-	int 21h ; open file to write
-	jnc ok 
-		jmp error
-	ok:
-		mov handle, ax ; save handle
-endm fout_open
-
-msg_print macro msg
+; macro
+print macro msg
 	mov ah, 09h
 	lea dx, msg
 	int 21h ; print msg
-endm msg_print   
+endm
 
-put_word_in_buff macro bsize, pos
+log macro msg
+	local m, c
+	jmp c
+		m db msg, '$'
+	c:
+		print m
+endm
+
+logn macro msg
+	log msg
+	print newline
+endm
+
+copy_word macro file_
 	pop cx
-	add bsize, cx
-	mov si, in_pos
-	mov di, pos
+	add file_.len, cx
+	mov si, inp_file.pos
+	mov di, file_.pos
 	rep movsb
 	mov byte ptr [di], ' ' 
 	inc di
-	inc bsize
-	mov pos, di 
-endm put_word_in_buff
-
-fout_write macro handle, bsize, buf
-	mov ah, 40h 
-	mov bx, handle
-	mov cx, bsize
-	lea dx, buf
-	int 21h ; write to file
-endm fout_write
-
-print_buffer macro bsize, buf
-	mov bx, bsize
-	mov buf[bx], '$'
-	msg_print buf
-	msg_print nl
-endm print_buffer   
+	inc file_.len
+	mov file_.pos, di 
+endm 
 
 begin:   
     xor cx, cx
@@ -89,6 +63,7 @@ begin:
 		jmp no_args
 
 	cmd_args:
+		logn "from args"
 		mov di, 81h 
 		mov al, ' '
 		repe scasb 	; skip spases
@@ -105,46 +80,42 @@ begin:
 		pop cx
 		sub cx, ax 				; count real length of arg
 		pop si 					; pointer to start of arg 
-		lea di, file_name + 2 	; pointer to file name buffer
-		mov file_name[1], cl 	; mov length of arg in 2nd byte
+		lea di, inp_fname + 2 	; pointer to file name buffer
+		mov inp_fname[1], cl 	; mov length of arg in 2nd byte
 		rep movsb 				; copy to file name buffer
 		jmp open_files
 
 	no_args: 
-		msg_print s_fprmt ; print prompt to enter name of file
+		log "Enter file name > "; print prompt to enter name of file
 		mov ah, 0ah
-		lea dx, file_name
+		lea dx, inp_fname
 		int 21h 				; get file name from keyboard
-		msg_print nl
+		print newline
 
 	open_files:
 		xor bx, bx
-		mov bl, file_name[1]
-		mov file_name[2 + bx], 0 			; make asciz (put 0 after)
-		mov ax, 3d00h
-		lea dx, file_name + 2 
-		int 21h 							; open file to read
-		jnc next_files
-			jmp error
-		next_files:
-		mov handle_in, ax 					; save handle
-		fout_open out1_name, handle_out1 	; open file for vowels
-		fout_open out2_name, handle_out2 	; open file for consonants
-		msg_print s_ok 						; print ok msg 
+		mov bl, inp_fname[1]
+		mov inp_fname[bx + 2], 0; make asciz (put 0 after)
+		push offset inp_file
+		push offset inp_fname + 2
+		push 0
+		call fopen 				; open input file
+		push offset vow_file
+		push offset vow_fname
+		push 1
+		call fopen 				; open file with vowel-started words
+		push offset con_file
+		push offset con_fname
+		push 1
+		call fopen 				; open file with consanant-started words
+		logn "files opened successfuly!"
+		push offset inp_file
+		call fread 				; read everything from file to buffer
+		logn "file has been read."
 
-		mov ah, 3fh
-		mov bx, handle_in
-		mov cx, buf_len
-		lea dx, inbuf
-		int 21h 			; read everything from file to buffer
-		mov inbuf_size, ax 	; save len of buffer
-		msg_print s_rdok 	; print read ok msg
-		msg_print nl 
-		print_buffer inbuf_size, inbuf 		; print input buffer
-
-	lea di, inbuf - 1
-	mov cx, inbuf_size
-	replace_non_letters:	; all non-letter characters are replaced to spaces
+	lea di, inp_file.fbuf
+	mov cx, inp_file.len
+	replace_non_letters:		; all non-letter characters are replaced with spaces
 		inc di 
 		cmp byte ptr [di], 'A'
 		jl replace
@@ -158,72 +129,112 @@ begin:
 			mov byte ptr [di], ' '
 		no_replace:
 	loop replace_non_letters
+	logn "non-space characters replaced."
 
-	mov in_pos, offset inbuf
-	mov out1_pos, offset out1buf
-	mov out2_pos, offset out2buf
-	mov cx, inbuf_size
-
+	mov cx, inp_file.len
 	process_file:
 		mov al, ' '
-		mov di, in_pos
+		mov di, inp_file.pos
 		repe scasb 				; skip spaces
 		cmp cx, 0 				; if eof go to write
 		je write			
 			dec di 				; move to previous byte
 			inc cx
 			push cx 			; save remain file len in stack
-			mov in_pos, di
+			mov inp_file.pos, di
 			repne scasb 		; find end of word
 			cmp cx, 0 			; if eof go increment cx
 			je count_word_len
 				inc cx
 				dec di
-
 			count_word_len:
 			mov ax, cx
 			pop cx 				; get ramain file len and push it back
 			push ax
 			sub cx, ax 			; count length of word
 			push cx 			; save len of word in stack
-
 			mov cx, num_of_vows
 			xor bx, bx
-			mov si, in_pos 		; pointer to first letter
+			mov si, inp_file.pos 		; pointer to first letter
 			check_first_letter:
 				mov dl, vowels[bx]
-				cmp byte ptr [si], dl 					; go to section by type of current symbol 
+				cmp byte ptr [si], dl 	; go to section by type of current symbol 
 				je vowel
 				inc bx
 			loop check_first_letter
 			jmp consonant
-
 			vowel:
-				put_word_in_buff out1b_size, out1_pos	; copy word in buff, put space after it
+				copy_word vow_file; copy word in buff, put space after it
 				jmp contine_process
 			consonant:
-				put_word_in_buff out2b_size, out2_pos 
-				
+				copy_word con_file
 			contine_process:
-				mov in_pos, si ; save current possiton
+				mov inp_file.pos, si ; save current possiton
 				pop cx 
-				cmp cx, 0      ; if eof go to write
+				cmp cx, 0     		 ; if eof go to write
 				je write
-				jmp process_file
-
+					jmp process_file
 	write:
-		msg_print s_prc 							; print prc msg
-		print_buffer out1b_size, out1buf			; print vowels buffer
-		print_buffer out2b_size, out2buf			; print consonants buffer
-		fout_write handle_out1, out1b_size, out1buf ; write to file with vowels
-		fout_write handle_out2, out2b_size, out2buf ; write to file with consonants	
-		jmp exit
-
-	error:
-		msg_print s_err ; print error msg
+		logn "everything has been processed." ; print prc msg
+		mov ah, 0ah
+		push offset vow_file
+		call fwrite
+		push offset con_file
+		call fwrite
 	exit:
-	msg_print s_exit 	; print exit msg
+	logn "exit"	; print exit msg
 	mov ax, 4c00h
-	int 21h				; int 21h
+	int 21h		; int 21h
+
+; open file args: file pointer, pointer to ascxiz string, mode of opening
+fopen proc
+	push bp
+	mov bp, sp
+		mov bx, [bp + 8] ; File pointer
+		mov ah, 3dh
+		mov al, [bp + 4] ; mode of opening
+		mov dx, [bp + 6] ; file name offset
+		int 21h ; open file
+		jnc save_handle
+			logn "cannot open file!"
+			jmp exit
+		save_handle:
+		mov [bx].handle, ax
+		lea dx, [bx].fbuf
+		mov [bx].pos, dx
+	pop bp
+	ret 6
+fopen endp
+
+; read from file args: file pointer
+fread proc
+	push bp
+	mov bp, sp
+		mov si, [bp + 4] ; File pointer
+		mov ah, 3fh
+		mov bx, [si].handle
+		mov cx, 1000h
+		lea dx, [si].fbuf
+		int 21h ; read everything to buffer
+		mov [si].len, ax
+	pop bp
+	ret 2 
+fread endp
+
+; write to file args: file pointer
+fwrite proc 
+	push bp
+	mov bp, sp
+		mov si, [bp + 4] ; File pointer
+		mov ah, 40h
+		mov bx, [si].handle
+		mov cx, [si].len
+		lea dx, [si].fbuf
+		int 21h ; write to file
+		mov [si].len, ax
+	pop bp
+	ret 2 
+fwrite endp
+
 prog ends
 end main
