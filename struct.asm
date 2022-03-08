@@ -59,7 +59,6 @@ begin:
 
 	push offset inp_file
 	call fread
-
 	logn "read from file:"
 	mov bx, inp_file.len
 	mov inp_file.fbuf[bx], '$'
@@ -103,6 +102,21 @@ fread proc
 	pop bp
 	ret 2 
 fread endp
+
+; write to file args: file pointer
+fwrite proc 
+	push bp
+	mov bp, sp
+		mov si, [bp + 4] ; File pointer
+		mov ah, 40h
+		mov bx, [si].handle
+		mov cx, [si].bsize
+		lea dx, [si].fbuf
+		int 21h ; write to file
+		mov [si].len, ax
+	pop bp
+	ret 2 
+fwrite endp
 
 prog ends
 end main

@@ -39,8 +39,11 @@ log macro msg
 endm
 
 logn macro msg
-	log msg
-	print newline
+	local m, c
+	jmp c
+		m db msg, 13, 10,'$'
+	c:
+		print m
 endm
 
 copy_word macro file_
@@ -55,6 +58,12 @@ copy_word macro file_
 	mov file_.pos, di 
 endm 
 
+print_buf macro file_
+	mov bx, file_.len
+	mov file_.fbuf[bx], '$'
+	print file_.fbuf
+endm
+щ
 begin:   
     xor cx, cx
 	mov cl, es:80h
@@ -63,7 +72,6 @@ begin:
 		jmp no_args
 
 	cmd_args:
-		logn "from args"
 		mov di, 81h 
 		mov al, ' '
 		repe scasb 	; skip spases
@@ -102,16 +110,17 @@ begin:
 		call fopen 				; open input file
 		push offset vow_file
 		push offset vow_fname
-		push 1
-		call fopen 				; open file with vowel-started words
+		call fcreate 			; open file with vowel-started words
 		push offset con_file
 		push offset con_fname
-		push 1
-		call fopen 				; open file with consanant-started words
-		logn "files opened successfuly!"
+		call fcreate			; open file with consanant-started words
+		logn "file opened successfuly!"
 		push offset inp_file
 		call fread 				; read everything from file to buffer
-		logn "file has been read."
+		print newline
+		logn "file has been read:"
+		print_buf inp_file
+		print newline
 
 	lea di, inp_file.fbuf
 	mov cx, inp_file.len
@@ -129,7 +138,6 @@ begin:
 			mov byte ptr [di], ' '
 		no_replace:
 	loop replace_non_letters
-	logn "non-space characters replaced."
 
 	mov cx, inp_file.len
 	process_file:
@@ -164,27 +172,35 @@ begin:
 			loop check_first_letter
 			jmp consonant
 			vowel:
-				copy_word vow_file; copy word in buff, put space after it
+				copy_word vow_file		; copy word in buff, put space after it
 				jmp contine_process
 			consonant:
 				copy_word con_file
 			contine_process:
-				mov inp_file.pos, si ; save current possiton
+				mov inp_file.pos, si 	; save current possiton
 				pop cx 
-				cmp cx, 0     		 ; if eof go to write
+				cmp cx, 0     			; if eof go to write
 				je write
 					jmp process_file
 	write:
-		logn "everything has been processed." ; print prc msg
 		mov ah, 0ah
 		push offset vow_file
 		call fwrite
+		logn "words started with vowel (file vowel.txt):"
+		print_buf vow_file ; print whats in vowel.txt file
+		print newline
+		print newline
+
 		push offset con_file
 		call fwrite
+		logn "words started with consonat (file cons.txt):"
+		print_buf con_file ; print whats in cons.txt file
+		print newline
 	exit:
-	logn "exit"	; print exit msg
+	print newline
+	logn "exit"	
 	mov ax, 4c00h
-	int 21h		; int 21h
+	int 21h		; exit
 
 ; open file args: file pointer, pointer to ascxiz string, mode of opening
 fopen proc
@@ -235,6 +251,26 @@ fwrite proc
 	pop bp
 	ret 2 
 fwrite endp
+
+; create file args: file pointer, pointer to asciz string
+fcreate proc 
+	push bp
+	mov bp, sp
+		mov bx, [bp + 6] ; File pointer
+		mov ah, 3ch
+		mov cx, 0
+		mov dx, [bp + 4] ; file name offset
+		int 21h ; create file
+		jnc save_handle_
+			logn "cannot create file!"
+			jmp exit
+		save_handle_:
+		mov [bx].handle, ax
+		lea dx, [bx].fbuf
+		mov [bx].pos, dx
+	pop bp
+	ret 4
+fcreate endp
 
 prog ends
 end main
