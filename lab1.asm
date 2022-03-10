@@ -17,8 +17,8 @@ inp_file File <>
 vow_file File <>
 con_file File <>
 inp_fname   db 80, ?, 80 dup (?)
-vow_fname 	db "vowel.txt", 0
-con_fname 	db "cons.txt", 0
+vow_fname 	db "outv.txt", 0
+con_fname 	db "outc.txt", 0
 vowels		db "aeouiyAEOIUY"
 num_of_vows dw $ - vowels
 newline		db 0dh, 0ah, '$'
@@ -232,6 +232,10 @@ fread proc
 		mov cx, 1000h
 		lea dx, [si].fbuf
 		int 21h ; read everything to buffer
+		jnc read_ok
+			logn "cannot read from file"
+			jmp exit
+		read_ok:
 		mov [si].len, ax
 	pop bp
 	ret 2 
@@ -247,6 +251,10 @@ fwrite proc
 		mov cx, [si].len
 		lea dx, [si].fbuf
 		int 21h ; write to file
+		jnc write_ok
+			logn "cannot write to file"
+			jmp exit
+		write_ok:
 		mov [si].len, ax
 	pop bp
 	ret 2 
