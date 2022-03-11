@@ -7,13 +7,13 @@ jmp begin
 ; variables
 newline	db 0dh, 0ah, '$'
 handle 	dw ?
-w		db 0
-h		db 0
-colour	db 0
-next	db 0
-shape	db 2000 dup (' ')
-fill	db 80 dup (178)
+w		db ?
+h		db ?
+colour	db ?
+next	db ?
 inp		db 3, ?, 3 dup (?)
+buffer	db 5000h dup (?)
+buflen  dw 0
 
 ; macro
 print macro msg
@@ -21,6 +21,7 @@ print macro msg
 	lea dx, msg
 	int 21h ; print msg
 endm
+
 log macro msg
 	local m, c
 	jmp c
@@ -28,6 +29,7 @@ log macro msg
 	c:
 		print m
 endm
+
 logn macro msg
 	local m, c
 	jmp c
@@ -46,11 +48,26 @@ in_range macro dest, num, min, max
 	mov dest, ah
 endm
 
-newline_buff macro
+mcopy_str macro s
+	local m, c
+	jmp c
+		m db s, 0 
+	c:
+		lea si, m
+		call pcopy_str
+endm
+
+copy_newline macro
 	mov byte ptr [di], 13
-	inc di 
+	inc di
 	mov byte ptr [di], 10
 	inc di
+endm
+
+push_byte macro b
+	xor bh, bh
+	mov bl, b
+	push bx
 endm
 
 begin:   
@@ -84,57 +101,78 @@ begin:
 		mov handle, ax 	; save file handle
 		logn "file opened successfuly!"
 
-		call rand_seed 	; initialize random
-
-		draw_rect:
-		call rand_next
-		in_range w, next, 1, 78
-		call rand_next
-		in_range h, next, 1, 24 
-		call rand_next
-		in_range colour, next, 17, 255
-
-		mov ax, 0700h 	; scroll up iterrupt
-		mov bh, colour 	; set text colour
-		xor cx, cx
-		mov dx, 184fh
-		int 10h 		; clear the sreen
-
-		xor ch, ch
-		lea di, shape
-
-		mov cl, h
-		copy_line:
-			push cx
-			mov cl, w
-			lea si, fill
-			rep movsb
-			newline_buff
-			pop cx
-		loop copy_line
-		mov byte ptr [di], '$'
-		print shape
-
+		logn "enter blank line (only ENTER character) to save current rectangle and continue"
+		logn "or enter any character to exit."
 		mov ah, 0ah
 		lea dx, inp
 		int 21h ; wait for input
-		cmp inp[2], 13
-		je write
-			jmp exit
-		write:
 
-		xor ah, ah
-		mov al, w
-		add al, 2
-		mov bl, h
-		mul bl
-		mov cx, ax ; count symbols to write
-		mov ah, 40h 
-		mov bx, handle
-		lea dx, shape
-		int 21h ; write to file
+		call rand_seed 	; initialize random
+		lea di, buffer
 
+		draw_rect:
+			call rand_next
+			in_range w, next, 1, 78
+			call rand_next
+			in_range h, next, 1, 24 
+			call rand_next
+			in_range colour, next, 1, 16
+
+			mov ax, 0700h 	
+			xor bx, bx	 	
+			xor cx, cx
+			mov dx, 184fh
+			int 10h 		; clear the sreen
+
+			xor ch, ch
+			mov cl, h
+			copy_line:
+				push cx
+				mov ah, 09h ; write character
+				mov al, 178
+				xor bh, bh  ; 0 page 
+				mov bl, colour
+				xor ch, ch
+				mov cl, w 	
+				int 10h 	; print line of colored chars
+				print newline
+				pop cx
+			loop copy_line
+
+			mov ah, 0ah
+			lea dx, inp
+			int 21h ; wait for input
+			cmp inp[2], 13
+			je write_to_buff
+				jmp write_to_file
+
+			write_to_buff:
+			mcopy_str "Rectangle: "
+			copy_newline 
+			mcopy_str "width:  "
+			push_byte w
+			call num_to_str_dec
+			copy_newline
+			mcopy_str "height: "
+			push_byte h
+			call num_to_str_dec
+			copy_newline
+			mcopy_str "colour: "
+			push_byte colour
+			call num_to_str_dec
+			copy_newline
+			copy_newline
+
+			mov buflen, di
+			sub buflen, offset buffer
 		jmp draw_rect
+
+		write_to_file:
+			mov ah, 40h 
+			mov bx, handle
+			mov cx, buflen
+			lea dx, buffer
+			int 21h ; write whats in buffer to file
 
 	exit:
 	print newline
@@ -163,6 +201,49 @@ rand_seed proc
 	mov next, dl
 	ret
 rand_seed endp
+
+; di - destination offset; si - source offset; si points to asciz string
+pcopy_str proc 
+	start_:
+	cmp byte ptr [si], 0
+	je end_
+		mov dl, byte ptr [si]
+		mov byte ptr [di], dl
+		inc si
+		inc di
+	jmp start_
+	end_:
+	ret
+pcopy_str endp
+
+; di - destination str offset, number in stack
+num_to_str_dec proc 
+	push bp
+	mov bp, sp
+		xor dh, dh
+		mov dl, byte ptr [bp + 4]
+		mov bl, 10
+		xor cx, cx
+		put_dig_in_stack:
+			mov ax, dx
+			div bl
+			mov dl, ah 
+			push dx
+			inc cx
+			mov dl, al
+			cmp dl, 0
+			je move_dig_to_str
+			jmp put_dig_in_stack
+
+		move_dig_to_str:
+		pop dx
+		add dl, '0'
+		mov byte ptr [di], dl
+		inc di
+		loop move_dig_to_str
+	pop bp
+	ret 2
+num_to_str_dec endp
 
 prog ends
 end main
