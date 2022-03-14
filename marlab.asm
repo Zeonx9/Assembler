@@ -118,8 +118,8 @@ begin:
 			call rand_next
 			in_range colour, next, 1, 16
 
-			mov ax, 0700h 	
-			xor bx, bx	 	
+			mov ax, 0700h  		
+			mov bh, 07h 	
 			xor cx, cx
 			mov dx, 184fh
 			int 10h 		; clear the sreen
