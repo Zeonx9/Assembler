@@ -25,7 +25,8 @@ cor_y		dw 1 	; [1; 20]
 old_x		dw 1 	; [1; 20]
 old_y		dw 1 	; [1; 20]
 
-play_flag 	db 0
+play_flag 	db 1
+paused 		db 0
 cursor 		dw ?
 
 handler2fh proc far ; multiplex interrupt handler to interact with tsr
@@ -138,11 +139,16 @@ handler09h proc far ; keyboard interrupt handler
 				jmp not_send_code
 		l9s:
 		cmp al, 1fh ; s pressed
-		jne l9d
+		jne l9x
 			cmp cor_y, bottom
 			jge not_send_code
 				inc cor_y
 				jmp not_send_code
+		l9x:
+		cmp al, 2dh ; x pressed
+		jne l9d
+			mov cor_y, bottom
+			jmp not_send_code
 		l9d:
 		cmp al, 20h ; d pressed
 		jne chkfp2
@@ -168,10 +174,20 @@ handler09h proc far ; keyboard interrupt handler
 		iret ; return 
 handler09h endp
 
+get_index macro x_, y_ 
+	mov ax, y_
+	mov dl, 80
+	mul dl 
+	add ax, x_
+	mov bx, ax 
+endm 
+
 handler1ch proc far ; timer interrupt handler
 	inc tics
-	cmp tics, 2
-	jne pass_1ch
+	cmp tics, 5
+	je cont_inter
+		jmp pass_1ch
+	cont_inter:
 
 	push ds 
 		push cs 
@@ -180,50 +196,73 @@ handler1ch proc far ; timer interrupt handler
 	push dx
 	push bx
 
-		mov ax, old_y
-		mov dl, 80
-		mul dl 
-		add ax, old_x
-		mov bx, ax 
-		mov field[bx], 0b0h
+		cmp play_flag, 0
+		jne cont_play 
+			cmp paused, 0
+			je pause_game ; skip if paused else pause
+				jmp pass_draw
+			pause_game:
+				get_index old_x, old_y
+				mov field[bx], 'X' ; put signal of paused
+				inc paused
+				jmp draw_field
+		cont_play:
 
-		mov ax, cor_y
-		mov dl, 80
-		mul dl 
-		add ax, cor_x
-		mov bx, ax 
+		cmp play_flag, 1
+		jne cont_play2
+			cmp paused, 1
+			jne cont_play2 ; resume 
+				mov paused, 0
+		cont_play2:
 
-		push cor_x
-		pop  old_x
-		push cor_y
-		pop  old_y ; save previous cords
+			get_index old_x, old_y
+			mov field[bx], 0b0h ; erase previous
 
-		cmp play_flag, 1 ; put x to active position if game paused
-		je lt1
-			mov field[bx], 'X'
-			jmp lt2
-		lt1:
-			mov field[bx], 0b2h ;and fill it if resumed
-		lt2:
+			get_index cor_x, cor_y
+			mov field[bx], 0b2h ; set current position
 
-		mov ah, 3 
-		mov bh, 0 
-		int 10h 
-		mov cursor, dx ; save cursor position 
+		cmp cor_y, bottom
+		je save_and_next
 
-		mov ah, 2 
-		mov bh, 0
-		xor dx, dx 
-		int 10h ; set cursor to the top left corner
+		get_index cor_x, cor_y 
+		cmp field[bx + 80], 0b0h
+		jne save_and_next
+		jmp continue_fall
 
-		lea dx, field
-		mov ah, 9 
-		int 21h ; print out field
+		save_and_next:
+			mov cor_y, 1 ; put new up
+			jmp draw_field
 
-		mov ah, 2 
-		mov bh, 0 
-		mov dx, cursor 
-		int 10h ; put cursor back
+		continue_fall:
+			push cor_x
+			pop  old_x
+			push cor_y
+			pop  old_y ; save cords
+
+			inc cor_y
+
+		draw_field:
+
+			mov ah, 3 
+			mov bh, 0 
+			int 10h 
+			mov cursor, dx ; save cursor position 
+
+			mov ah, 2 
+			mov bh, 0
+			xor dx, dx 
+			int 10h ; set cursor to the top left corner
+
+			lea dx, field
+			mov ah, 9 
+			int 21h ; print out field
+
+			mov ah, 2 
+			mov bh, 0 
+			mov dx, cursor 
+			int 10h ; put cursor back
+
+		pass_draw:
 
 	pop bx
 	pop dx
@@ -277,12 +316,6 @@ try_to_install:
 	cmp flag_off, 0 ; check that no "/off"
 	je install
 
-		mov ax, 0700h  		
-		mov bh, 07h 	
-		xor cx, cx
-		mov dx, 184fh
-		int 10h 		; clear the screen
-
 		print_str "not installed!"
 		int 20h
 
@@ -304,6 +337,11 @@ try_to_install:
 		lea dx, handler09h
 		int 21h 			; put out handler on top 
 
+		mov ah, 2 
+		mov bh, 0
+		mov dx, 1800h 
+		int 10h ; set cursor to the bottom left corner
+
 		mov ax, 351ch
 		int 21h				; get 1ch vector into es:bx
 		mov word ptr previous1ch, bx
@@ -313,7 +351,6 @@ try_to_install:
 		int 21h
 
 		print_str "Installed."
-		mov cursor, 1800h
 		lea dx, end_of_resident
 		int 27h
 
@@ -337,11 +374,6 @@ already_installed:
 
 		success:
 		print_str "Uninstalled."
-		; mov ax, 0700h  		
-		; mov bh, 07h 	
-		; xor cx, cx
-		; mov dx, 164fh
-		; int 10h 		; clear the screen 
 		int 20h ; exit
 
 ; variables of boot part
