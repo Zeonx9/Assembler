@@ -12,37 +12,37 @@ previous1ch dd ?
 
 tics		db 0
 
-left 	equ 1
-right 	equ 20
+left 	equ 1 
+right 	equ 20 
 top 	equ 1
 bottom 	equ 20
-empty 	equ ' '
-flen 	equ 20
+empty 	equ ' ' ; filler of the field
+flen 	equ 20  ; length of field
 
 field		db        0c9h, flen dup(0cdh),  0bbh, 10 dup(empty), "score:", 40 dup(empty), 13, 10 ; field is 20 x 20, however its actual size is 24 x 22 
 ;			db 	      0bah, flen dup(empty), 0bah, 10 dup(empty), "000000", 40 dup(empty), 13, 10
 			db 20 dup(0bah, flen dup(empty), 0bah, 56 dup(empty), 13, 10)
 			db 		  0c8h, flen dup(0cdh),  0bch, 56 dup(empty), 13, 10, '$'
 
-cor_x		dw 1 	; [1; 20]
-cor_y		dw 1 	; [1; 20]
-old_x		dw 1 	; [1; 20]
-old_y		dw 1 	; [1; 20]
+cor_x		dw 1 	; current coordinats
+cor_y		dw 1 	
+old_x		dw 1 	; previous coordinats
+old_y		dw 1 	
 
-play_flag 	db 0
-go_flag 	db 0
+play_flag 	db 0 	; set if game is on, toggled by <P> if down then pause
+go_flag 	db 0 	; set if reached game over
 ; again_flag 	db 0
-paused 		db 1
-cursor 		dw ?
+paused 		db 1 	; used to change current element to show that game is paused
+cursor 		dw ?	; save coordinates of cursor
 
-colours		db 0b0h, 0b1h, 0b2h, 0dbh
-color 		db 0b0h
-next 		db ?
+colours		db 0b0h, 0b1h, 0b2h, 0dbh ; possible colours of elements
+color 		db 0b0h ; current color
+next 		db ? 	; used in random, present the result of call rand_nextf
 
-score 		dw 0
-score_y 	dw 1
-gameover 	db "game is over!"
-go_len 		dw $-gameover
+score 		dw 0 	; score of the curren game
+score_y 	dw 1 	; line where score is printed
+gameover 	db "game is over!" ; msg of gaming over
+go_len 		dw $-gameover 
 ; --------- prodedures and macroses for resident part ---------
 
 ; uses ax, bx, dx, doesn't save
@@ -197,6 +197,9 @@ handler2fh proc far ; multiplex interrupt handler to interact with tsr
 handler2fh endp
 
 handler09h proc far ; keyboard interrupt handler
+	; if game is active then handle controling keys pressing, none of keys are inputed, noncontroling are skipped
+	; <P> toggles play_flag anyway
+	; if game is paused all keys but <P> behave normally 
 	push ds 
 		push cs 
 		pop ds 
@@ -207,22 +210,36 @@ handler09h proc far ; keyboard interrupt handler
 		in 	al, 60h ; get scancode from 60h port
 		cmp al, 19h ; p pressed
 		jne l9a
+			cmp go_flag, 0
+			je normal_p
+				; here if game over and <P> pressed the game will start over
+				mov go_flag, 0 ; down go flag
+				mov score, 0   ; set initial values
+				mov cor_y, 1
+				inc score_y
+				inc play_flag
+
+				mov cx, flen
+				get_index 1, 1
+				clr_row_screen: ; clear field
+					push cx 
+					mov cx, flen
+					clr_cell_screen:
+						mov field[bx], empty
+						inc bx
+					loop clr_cell_screen
+					sub bx, flen
+					add bx, 80 
+					pop cx
+				loop clr_row_screen
+
+			normal_p:
 			xor play_flag, 1
 			jmp not_send_code
 
 		l9a:
-		; cmp al, 1eh ; a pressed (start again)
-		; jne chkfp
-		; 	cmp go_flag, 0
-		; 	je out9a
-		; 		inc again_flag
-		; 		dec go_flag
-
-		; 	out9a: jmp not_send_code
-
-		; chkfp:
-		cmp play_flag, 1
-		je l9j 
+		cmp play_flag, 0
+		jne l9j 
 			jmp pass_09h
 
 		l9j:
@@ -287,8 +304,8 @@ handler09h proc far ; keyboard interrupt handler
 			out9f: jmp not_send_code
 
 	chkfp2:
-	cmp play_flag, 1
-	je not_send_code
+	cmp play_flag, 0
+	jne not_send_code
 
 	pass_09h:
 		pop dx 
@@ -310,16 +327,20 @@ handler09h proc far ; keyboard interrupt handler
 handler09h endp 
 
 handler1ch proc far ; timer interrupt handler
-	inc cs:tics
-	cmp cs:tics, 2
-	je cont_inter
-		jmp pass_1ch
-	cont_inter:
+	; used to update the screen also provides all logic and physics of the game
+	; if go_flag set just pass control to old handler
 
 	cmp cs:go_flag, 0
 	je cont_inter2
 		jmp pass_1ch
 	cont_inter2:
+
+	inc cs:tics
+
+	cmp cs:tics, 2
+	je cont_inter
+		jmp pass_1ch
+	cont_inter:
 
 	push ds 
 		push cs 
@@ -328,29 +349,6 @@ handler1ch proc far ; timer interrupt handler
 	push dx
 	push bx
 	push cx
-		; cmp again_flag, 1
-		; jne cont_pchk
-
-		; 	mov score, 0
-		; 	mov cor_y, 1
-		; 	inc score_y
-		; 	inc play_flag
-
-		; 	mov cx, flen
-		; 	get_index 1, 1
-		; 	clr_row_screen:
-		; 		push cx 
-		; 		mov cx, flen
-		; 		clr_cell_screen:
-		; 			mov field[bx], empty
-		; 			inc bx
-		; 		loop clr_cell_screen
-		; 		sub bx, flen
-		; 		add bx, 80 
-		; 		pop cx
-		; 	loop clr_row_screen
-
-		; cont_pchk:
 
 		cmp play_flag, 0
 		jne cont_play 
@@ -390,7 +388,7 @@ handler1ch proc far ; timer interrupt handler
 			cmp cor_y, 1
 			jne cont_1csave1
 				inc go_flag ; set game over flag
-				dec play_flag
+				dec play_flag ; switching to normal input mode
 				get_index 5, 11
 				lea di, field[bx]
 				lea si, gameover 
@@ -589,13 +587,12 @@ already_installed:
 ; variables of boot part
 off_key 	db "/off"
 flag_off	db 0
-instruction db 13, 10, "^_^  Hi!  ^_^", 13, 10, 
-			db "Wanna play Tetris?)", 13, 10 
+instruction db " ------- Wanna play Tetris ?) ------- ", 13, 10 
 			db " -> press <P> to start the game and pause/resume it later", 13, 10
-			db " -> press <D> to move left and <F> to move right", 13, 10
+			db " -> press <D> to move left   and <F> to move right", 13, 10
+			db " -> press <J> to rotate left and <K> to rotate right", 13, 10
 			db " -> press <V> to move down immediatly", 13, 10
-			db " -> press <J> to rotate left and <K> to rotate right", 13, 10, '$'
-			db " -> press <A> to start again after the game is over", 13, 10, 13, 10, '$'
+			db " - - - - - - - - - - - - - - - - - - - - - ", 13, 10, '$'
 
 ; procedures
 print proc near ; dx = offset of '$'-terminated string  
