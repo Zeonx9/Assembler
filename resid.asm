@@ -19,8 +19,7 @@ bottom 	equ 20
 empty 	equ ' ' ; filler of the field
 flen 	equ 20  ; length of field
 
-field		db        0c9h, flen dup(0cdh),  0bbh, 10 dup(empty), "score:", 40 dup(empty), 13, 10 ; field is 20 x 20, however its actual size is 24 x 22 
-;			db 	      0bah, flen dup(empty), 0bah, 10 dup(empty), "000000", 40 dup(empty), 13, 10
+field		db        0c9h, flen dup(0cdh),  0bbh, 10 dup(empty), "score:", 40 dup(empty), 13, 10 ; field is 10(20) x 20, however its actual size is 24 x 22 
 			db 20 dup(0bah, flen dup(empty), 0bah, 56 dup(empty), 13, 10)
 			db 		  0c8h, flen dup(0cdh),  0bch, 56 dup(empty), 13, 10, '$'
 
@@ -43,6 +42,38 @@ score 		dw 0 	; score of the curren game
 score_y 	dw 1 	; line where score is printed
 gameover 	db "game is over!" ; msg of gaming over
 go_len 		dw $-gameover 
+
+figure struc ; structure of a figure 
+	x_ofs 	dw ? ; each figure consists of 4 blocks , each block can be described by offser related to "center point"
+			dw ? 
+			dw ? 
+			dw ? 
+
+	y_ofs  	dw ? ; most convinient variant is to chose most top and most left block as a center one 
+			dw ?
+			dw ?
+			dw ? 
+
+	chk_f 	db ? ; array of flags should each block be used in checking to place or not
+			db ?
+			db ?
+			db ?
+
+	r_rot 	dw ?  ; id's of figures in  which current figure will be transformed after performing rotation 
+	l_rot 	dw ?  
+figure ends
+
+cur_fig 	dw 0    ; index of current figure in figures array 
+
+figures: ; constant array figures which are used in game
+	O_fig figure <0, 0, 1, 1,  0, 1, 0, 1,  0, 0, 1, 1,  0, 0> ; "O" figure 
+	I_fig figure <0, 0, 0, 0,  0, 1, 2, 3,  0, 0, 0, 1,  2, 2> ; "I" figure 
+	I_rot figure <0, 1, 2, 3,  0, 0, 0, 0,  1, 1, 1, 1,  1, 1> ; rot "I" 
+	S_fig figure <0, 1,-1, 0,  0, 0, 1, 1,  0, 1, 1, 1,  4, 4> ; "S" figure 
+	S_rot figure <0, 0, 1, 1,  0, 1, 1, 2,  0, 1, 0, 1,  3, 3> ; rot "S"
+	Z_fig figure <0, 1, 1, 2,  0, 0, 1, 1,  1, 0, 1, 1,  6, 6> ; "Z" figure
+	Z_rot figure <0, 0,-1,-1,  0, 1, 1, 2,  0, 1, 0, 1,  5, 5> ; rot "Z"
+
 ; --------- prodedures and macroses for resident part ---------
 
 ; uses ax, bx, dx, doesn't save
@@ -234,11 +265,11 @@ handler09h proc far ; keyboard interrupt handler
 				loop clr_row_screen
 
 			normal_p:
-			xor play_flag, 1
+			xor play_flag, 1 ; toggle play flag
 			jmp not_send_code
 
 		l9a:
-		cmp play_flag, 0
+		cmp play_flag, 0 ; if game is not active then keys are handled usually
 		jne l9j 
 			jmp pass_09h
 
@@ -254,11 +285,11 @@ handler09h proc far ; keyboard interrupt handler
 			cmp cor_x, left
 			jle out9d
 			get_index cor_x, cor_y
-			sub bx, 1
-			cmp field[bx], empty
+			; sub bx, 1
+			cmp field[bx - 1], empty
 			jne out9d
 				
-				dec cor_x
+				sub cor_x, 2 
 				
 			out9d: jmp not_send_code
 
@@ -296,10 +327,10 @@ handler09h proc far ; keyboard interrupt handler
 			cmp cor_x, right
 			jge out9f
 			get_index cor_x, cor_y
-			cmp field[bx + 1], empty
+			cmp field[bx + 2], empty
 			jne out9f
 
-				inc cor_x
+				add cor_x, 2
 				
 			out9f: jmp not_send_code
 
@@ -356,8 +387,9 @@ handler1ch proc far ; timer interrupt handler
 		je pause_game ; skip if paused else pause
 			jmp pass_draw
 		pause_game:
-				get_index old_x, old_y
-				mov field[bx], 'X' ; put signal of paused
+				get_index old_x, old_y 
+				mov field[bx], '>' ; put signal of paused '><'
+				mov field[bx  + 1], '<'
 				inc paused
 				jmp draw_field
 		cont_play:
@@ -371,10 +403,12 @@ handler1ch proc far ; timer interrupt handler
 
 			get_index old_x, old_y
 			mov field[bx], empty ; erase previous
+			mov field[bx + 1], empty
 
 			get_index cor_x, cor_y
 			mov al, color
 			mov field[bx], al ; set current position
+			mov field[bx + 1], al
 
 		cmp cor_y, bottom ; check if figure is at the bottom 
 		je save_and_next
@@ -587,12 +621,13 @@ already_installed:
 ; variables of boot part
 off_key 	db "/off"
 flag_off	db 0
-instruction db " ------- Wanna play Tetris ?) ------- ", 13, 10 
+instruction db " - - - - - - - - -  Wanna play Tetris ?) - - - - - - - - - - ", 13, 10 
 			db " -> press <P> to start the game and pause/resume it later", 13, 10
 			db " -> press <D> to move left   and <F> to move right", 13, 10
 			db " -> press <J> to rotate left and <K> to rotate right", 13, 10
 			db " -> press <V> to move down immediatly", 13, 10
-			db " - - - - - - - - - - - - - - - - - - - - - ", 13, 10, '$'
+			db " -> press <P> again to restart the game after game is over", 13, 10
+			db " - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ", 13, 10, '$'
 
 ; procedures
 print proc near ; dx = offset of '$'-terminated string  
