@@ -9,60 +9,50 @@ number2fh 	db 0D7h
 previous2fh dd ?
 previous09h dd ?
 previous1ch dd ?
-
 tics		db 0
-
-left 	equ 1 
-right 	equ 20 
-top 	equ 1
-bottom 	equ 20
-empty 	equ ' ' ; filler of the field
-flen 	equ 20  ; length of field
-
-; field is 10(20) x 20, however its actual size is 80 x 22, to get cell under current add 80 
-field		db        0c9h, flen dup(0cdh),  0bbh, 10 dup(empty), "score:", 40 dup(empty), 13, 10 
-			db 20 dup(0bah, flen dup(empty), 0bah, 56 dup(empty), 13, 10)
-			db 		  0c8h, flen dup(0cdh),  0bch, 56 dup(empty), 13, 10, '$'
-
-cor_x		dw 9 	; current coordinats
-cor_y		dw 1 	; both coordinates shoudl be odd numbers
-old_x		dw 10 	; previous coordinats
-old_y		dw 7 	
-
-play_flag 	db 0 	; set if game is on, toggled by <P> if down then pause
-go_flag 	db 0 	; set if reached game over
-
-paused 		db 1 	; used to change current element to show that game is paused
+next 		db ? 	; used in random, present the result of call rand_nextf
 cursor 		dw ?	; save coordinates of cursor
 
-colours		db 0b0h, 0b1h, 0b2h, 0dbh ; possible colours of elements
-color 		db 0b0h ; current color
-next_color 	db ?
-next 		db ? 	; used in random, present the result of call rand_nextf
+empty 	equ ' ' ; filler of the field
+widt 	equ 20  ; length of field
 
 score 		dw 0 	; score of the curren game
 score_y 	dw 1 	; line where score is printed
-gameover 	db " game is over!" ; msg of gaming over
-go_len 		dw $-gameover 
 
+play_flag 	db 0 	; set if game is on, toggled by <P> if down then pause
+go_flag 	db 0 	; set if reached game over
+place_flag 	dw 0    ; flag shows whether figure should be placed
+paused 		db 1 	; used to change current element to show that game is paused
 rot_r 		db 0; flag if rotation to right pressed
 rot_l  		db 0; flag if totation to left pressed
 
-cur_fig 	dw 6    ; index of current figure in figures array 
+cor_x		dw 9 	; current coordinats
+cor_y		dw 1 	; both coordinates shoudl be odd numbers
+old_x		dw 9 	; previous coordinats
+old_y		dw 1 	
+
+color 		db 0b0h ; current color
+next_color 	db 0b0h
+colours		db 0b0h, 0b1h, 0b2h, 0dbh ; possible colours of elements
+cur_fig 	dw 0    ; index of current figure in figures array 
 next_fig    dw 0
-place_flag 	dw 0    ; flag shows whether figure should be placed
 
 ; structure of each figure: 
 ; 4 words = offset related prev block, 4 words = flags for cheking, 4 words = left check, 4 words = right check
 ; 2 words = indices of rotated figure, 1 word = numbers of rows taken by figure, 3 words = rotation borders ((22 words) 44 byte per figure) 
-;			  +0              +8           +16          +24          +32+34+36 +38
-figures		dw 0,  2, 78,  2,  0, 0, 1, 1,  1, 0, 1, 0,  0, 1, 0, 1,  0, 0, 2,  1, 20, 20 ; "O" figure  0
-			dw 0, 80, 80, 80,  0, 0, 0, 1,  1, 1, 1, 1,  1, 1, 1, 1,  2, 2, 4,  1, 13, 20 ; "I" figure  1
-			dw 0,  2,  2,  2,  1, 1, 1, 1,  1, 0, 0, 0,  0, 0, 0, 1,  1, 1, 1,  1, 20, 17 ; rot "I"     2
-			dw 0,  2, 76,  2,  0, 1, 1, 1,  0, 0, 1, 0,  0, 1, 0, 1,  4, 4, 2,  1, 20, 18 ; "S" figure  3
-			dw 0, 80,  2, 80,  0, 1, 0, 1,  1, 1, 0, 1,  0, 0, 1, 1,  3, 3, 3,  2, 20, 20 ; rot "S"     4
-			dw 0,  2, 80,  2,  1, 0, 1, 1,  1, 0, 1, 0,  0, 0, 0, 1,  6, 6, 2,  2, 20, 18 ; "Z" figure  5
-			dw 0, 78,  2, 78,  0, 0, 1, 1,  0, 1, 0, 1,  1, 0, 1, 1,  5, 5, 3,  1, 15, 20 ; rot "Z"     6
+;			  +0              +8           +16          +24          +32+34+36
+figures		dw 0,  2, 78,  2,  0, 0, 1, 1,  1, 0, 1, 0,  0, 1, 0, 1,  0, 0, 2 ; "O" figure  0
+			dw 0, 80, 80, 80,  0, 0, 0, 1,  1, 1, 1, 1,  1, 1, 1, 1,  2, 2, 4 ; "I" figure  1
+			dw 0,  2,  2,  2,  1, 1, 1, 1,  1, 0, 0, 0,  0, 0, 0, 1,  1, 1, 1 ; rot "I"     2
+			dw 0,  2, 76,  2,  0, 1, 1, 1,  0, 0, 1, 0,  0, 1, 0, 1,  4, 4, 2; "S" figure  3
+			dw 0, 80,  2, 80,  0, 1, 0, 1,  1, 1, 0, 1,  0, 0, 1, 1,  3, 3, 3; rot "S"     4
+			dw 0,  2, 80,  2,  1, 0, 1, 1,  1, 0, 1, 0,  0, 0, 0, 1,  6, 6, 2 ; "Z" figure  5
+			dw 0, 78,  2, 78,  0, 0, 1, 1,  0, 1, 0, 1,  1, 0, 1, 1,  5, 5, 3 ; rot "Z"     6
+
+; field is 10(20) x 20, however its actual size is 80 x 22, to get cell under current add 80 
+field		db 0c9h, widt dup(0cdh),  0bbh, 10 dup(empty), "score:  next:", 33 dup(empty), 13, 10 
+			db 20 dup(0bah, widt dup(empty), 0bah, 56 dup(empty), 13, 10)
+			db 0c8h, widt dup(0cdh),  0bch, 56 dup(empty), 13, 10, '$'
 
 ; -------------------------------------------------- prodedures and macroses for resident part ---------------------------------------------------------
 
@@ -83,13 +73,13 @@ in_range macro dest, num, min, max
 	sub bl, min ; length of range
 	div bl
 	add ah, min ; shift range
-	mov dest, ah
+	mov byte ptr dest, ah
 endm
 
 ; si = figure with given index in figures array
 get_figure macro ind 
 	mov ax, ind 
-	mov dl, 44
+	mov dl, 38
 	mul dl 
 	lea si, figures
 	add si, ax 
@@ -102,7 +92,7 @@ erase_figure proc
 	mov cx, 4 
 	clr_fig:
 		add bx, word ptr [si]
-		mov field[bx], empty
+		mov field[bx],     empty
 		mov field[bx + 1], empty
 		add si, 2
 	loop clr_fig
@@ -117,7 +107,7 @@ draw_figure proc
 	mov al, color
 	drw_fig:
 		add bx, word ptr [si]
-		mov field[bx], al
+		mov field[bx], 	   al
 		mov field[bx + 1], al 
 		add si, 2
 	loop drw_fig
@@ -202,16 +192,16 @@ check_right endp
 
 ; fills all play-field with empty cells
 clear_field proc 
-	mov cx, flen
+	mov cx, widt
 	get_index 1, 1
 	clr_row_screen: ; clear field
 		push cx 
-		mov cx, flen
+		mov cx, widt
 		clr_cell_screen:
 			mov field[bx], empty
 			inc bx
 		loop clr_cell_screen
-		sub bx, flen
+		sub bx, widt
 		add bx, 80 
 		pop cx
 	loop clr_row_screen
@@ -221,7 +211,7 @@ clear_field endp
 ; moves down by 1 cell every thing when collected full row (condition isn'nt checked)
 row_done proc
 	get_index 1, cor_y
-	mov cx, flen
+	mov cx, widt
 	clr_row: 		; clear the row and move everything down
 		push bx 
 		move_clmn:
@@ -240,52 +230,69 @@ row_done endp
 
 ; handle game over situation
 game_over proc 
-	inc go_flag ; set game over flag
-	dec play_flag ; switching to normal input mode
+	inc go_flag 	; set game over flag
+	dec play_flag 	; switching to normal input mode
 	get_index 4, 11 ; position to print game over
 	lea di, field[bx]
 	lea si, gameover 
 	mov cx, go_len
-	cpy_go:				; print gameover msg in the middle of field
-		mov al, [si]
-		mov [di], al 
+	cpy_go:			; print gameover msg in the middle of field
+		mov al, byte ptr [si]
+		mov byte ptr [di], al 
 		inc si 
 		inc di 
 	loop cpy_go
 	ret
+		gameover 	db " game is over!" ; msg of gaming over
+		go_len 		dw $-gameover 
 game_over endp
 
-; color = random color 
+; next_color = random color 
 set_color proc
+	mov al, next_color
+	mov color, al ; make active
+
 	call rand_next
 	in_range next_color, next, 0, 4
+
 	mov al, next_color
 	lea bx, colours
 	xlatb
-	mov next_color, al
+	mov next_color, al ; get next
 	ret
 set_color endp 
 
+; next_fig = random figure index
+set_figure proc
+	mov ax, next_fig 
+	mov cur_fig, ax ; make active
+
+	call rand_next
+	in_range next_fig, next, 0, 7
+	ret
+set_figure endp
+
+; performs rotation if flag (rot_r or rot_l) set
 rotate proc
-	get_figure cur_fig
-	mov dx, cor_x
-	cmp dx, word ptr [si + 38]
-	jl rett
-	cmp dx, word ptr [si + 40]
-	jg rett 
-	mov dx, cor_y
-	cmp dx, word ptr [si + 42]
-	jg rett 
-	cmp rot_r, 0
-	je rl
-		mov ax, word ptr [si + 34]
-		mov cur_fig, ax
-	rl: 
-	cmp rot_l, 0
-	je rett
-		mov ax,  word ptr [si + 32]
-		mov cur_fig, ax
-	rett:
+	; get_figure cur_fig
+	; mov dx, cor_x
+	; cmp dx, word ptr [si + 38]
+	; jl rett
+	; cmp dx, word ptr [si + 40]
+	; jg rett 
+	; mov dx, cor_y
+	; cmp dx, word ptr [si + 42]
+	; jg rett 
+	; cmp rot_r, 0
+	; je rl
+	; 	mov ax, word ptr [si + 34]
+	; 	mov cur_fig, ax
+	; rl: 
+	; cmp rot_l, 0
+	; je rett
+	; 	mov ax,  word ptr [si + 32]
+	; 	mov cur_fig, ax
+	; rett:
 		mov rot_l, 0
 		mov rot_r, 0
 	ret
@@ -330,6 +337,42 @@ print_score proc
 	jnz digit_dec
 	ret 
 print_score endp
+
+; prints next figure into the field
+print_next_fig proc
+	get_index 39, 2
+	mov cx, 5
+	clr_row_nf: ;cleat the 5x8 area for the figure
+		push cx
+		push bx 
+		mov cx, 16
+		clr_cell_nf:
+			mov field[bx], empty
+			inc bx
+		loop clr_cell_nf
+		pop bx
+		add bx, 80
+		pop cx 
+	loop clr_row_nf 
+
+	mov al, color  ; set color and figure for next
+	mov tmp_col, al
+	mov al, next_color
+	mov color, al 
+	
+	push cur_fig
+	mov ax, next_fig
+	mov cur_fig, ax 
+
+	get_index 42, 2
+	call draw_figure ; draw it
+
+	pop cur_fig ; set everything back
+	mov al, tmp_col
+	mov color, al
+	ret 
+		tmp_col db ?
+print_next_fig endp
 
 ; -------------------------------------------------------------- interrunt handlers --------------------------------------------------------------
 
@@ -442,7 +485,12 @@ handler09h proc far
 
 			normal_p:
 			xor play_flag, 1 ; toggle play flag
-			jmp not_send_code
+			cmp play_flag, 1
+			jne outpchk
+				call print_next_fig
+				call print_score
+
+			outpchk: jmp not_send_code
 
 		chkfp: cmp play_flag, 0 ; if game is not active then keys are handled usually
 		jne l9j 
@@ -588,7 +636,7 @@ handler1ch proc far
 			chk_row:
 				push cx
 				get_index 1, cor_y
-				mov cx, flen
+				mov cx, widt
 				chk_cell:
 					cmp field[bx], empty
 					je skip_row
@@ -605,9 +653,10 @@ handler1ch proc far
 			cont_1csave:
 			mov cor_y, 1 ; put new up
 			mov old_y, 1
-			mov al, next_color
-			mov color, al
+			mov cor_x, 9
 			call set_color
+			call set_figure
+			call print_next_fig
 			call print_score
 			jmp draw_field
 
@@ -737,6 +786,7 @@ try_to_install:
 
 		call rand_seed ; initialaze random
 		call set_color
+		call set_figure
 		print_str "Installed."
 		lea dx, instruction
 		call print
