@@ -13,41 +13,46 @@ tics		db 0
 next 		db ? 	; used in random, present the result of call rand_nextf
 cursor 		dw ?	; save coordinates of cursor
 
-empty 	equ ' ' ; filler of the field
-widt 	equ 20  ; length of field
+empty 		equ ' ' ; filler of the field
+widt 		equ 20  ; length of field
 
 score 		dw 0 	; score of the curren game
 score_y 	dw 1 	; line where score is printed
 
 play_flag 	db 0 	; set if game is on, toggled by <P> if down then pause
-go_flag 	db 0 	; set if reached game over
-place_flag 	dw 0    ; flag shows whether figure should be placed
 paused 		db 1 	; used to change current element to show that game is paused
-rot_r 		db 0; flag if rotation to right pressed
-rot_l  		db 0; flag if totation to left pressed
+go_flag 	db 0 	; set if reached game over
+place_flag 	db 0    ; flag shows whether figure should be placed
+rem_old 	db 0    ; flag set if need to remove old drawn figure
+can_chg 	db 0 	; flag if changment is legal and can be performed
+rot_r 		db 0   	; flag if rotation to right pressed
+rot_l  		db 0 	; flag if totation to left pressed
 
 cor_x		dw 9 	; current coordinats
 cor_y		dw 1 	; both coordinates shoudl be odd numbers
 old_x		dw 9 	; previous coordinats
 old_y		dw 1 	
+nxt_x  		dw ?
+nxt_y 		dw ?
 
 color 		db 0b0h ; current color
 next_color 	db 0b0h
 colours		db 0b0h, 0b1h, 0b2h, 0dbh ; possible colours of elements
 cur_fig 	dw 0    ; index of current figure in figures array 
 next_fig    dw 0
+nxt_fig 	dw ?
 
 ; structure of each figure: 
-; 4 words = offset related prev block, 4 words = flags for cheking, 4 words = left check, 4 words = right check
-; 2 words = indices of rotated figure, 1 word = numbers of rows taken by figure, 3 words = rotation borders ((22 words) 44 byte per figure) 
-;			  +0              +8           +16          +24          +32+34+36
-figures		dw 0,  2, 78,  2,  0, 0, 1, 1,  1, 0, 1, 0,  0, 1, 0, 1,  0, 0, 2 ; "O" figure  0
-			dw 0, 80, 80, 80,  0, 0, 0, 1,  1, 1, 1, 1,  1, 1, 1, 1,  2, 2, 4 ; "I" figure  1
-			dw 0,  2,  2,  2,  1, 1, 1, 1,  1, 0, 0, 0,  0, 0, 0, 1,  1, 1, 1 ; rot "I"     2
-			dw 0,  2, 76,  2,  0, 1, 1, 1,  0, 0, 1, 0,  0, 1, 0, 1,  4, 4, 2; "S" figure  3
-			dw 0, 80,  2, 80,  0, 1, 0, 1,  1, 1, 0, 1,  0, 0, 1, 1,  3, 3, 3; rot "S"     4
-			dw 0,  2, 80,  2,  1, 0, 1, 1,  1, 0, 1, 0,  0, 0, 0, 1,  6, 6, 2 ; "Z" figure  5
-			dw 0, 78,  2, 78,  0, 0, 1, 1,  0, 1, 0, 1,  1, 0, 1, 1,  5, 5, 3 ; rot "Z"     6
+; 4 words = offset related prev block, 2 words = indices of rotated figure, 
+; 1 word = numbers of rows taken by figure (7 words) 14 byte per figure) 
+;			  +0              +8 +10+12
+figures		dw 0,  2, 78,  2,  0, 0, 2 ; "O" figure  0
+			dw 0, 80, 80, 80,  2, 2, 4 ; "I" figure  1
+			dw 0,  2,  2,  2,  1, 1, 1 ; rot "I"     2
+			dw 0,  2, 76,  2,  4, 4, 2 ; "S" figure  3
+			dw 0, 80,  2, 80,  3, 3, 3 ; rot "S"     4
+			dw 0,  2, 80,  2,  6, 6, 2 ; "Z" figure  5
+			dw 0, 78,  2, 78,  5, 5, 3 ; rot "Z"     6
 
 ; field is 10(20) x 20, however its actual size is 80 x 22, to get cell under current add 80 
 field		db 0c9h, widt dup(0cdh),  0bbh, 10 dup(empty), "score:  next:", 33 dup(empty), 13, 10 
@@ -79,10 +84,28 @@ endm
 ; si = figure with given index in figures array
 get_figure macro ind 
 	mov ax, ind 
-	mov dl, 38
+	mov dl, 14
 	mul dl 
 	lea si, figures
 	add si, ax 
+endm
+
+; prepare to use check_nxt
+move_nxt macro 
+	push cor_y 
+	push cor_x
+	push cur_fig
+	pop  nxt_fig
+	pop  nxt_x
+	pop  nxt_y
+endm
+
+; save all cor's to old's (old - drawn fig, cor - next to be drawn, and nxt - checking)
+save_cords macro 
+	push cor_x ; save cords
+	push cor_y
+	pop  old_y 
+	pop  old_x
 endm
 
 ; set all cells taken by figure with center at field[bx], to empty ones
@@ -114,100 +137,6 @@ draw_figure proc
 	ret 
 draw_figure endp
 
-; place_flag = 1 if figure on the bottom or on top of another, else place_flag = 0
-check_bottom proc
-	; get_figure cur_fig
-	get_figure cur_fig
-	mov cx, 4
-	chk_fig:
-		add bx, word ptr [si]
-		cmp word ptr [si + 8], 0 
-		je skip_chk
-
-		cmp field[bx + 80], empty
-		jne set_flag_place
-
-		skip_chk:
-			add si, 2
-	loop chk_fig
-
-	mov place_flag, 0
-	jmp return_
-	set_flag_place:
-	mov place_flag, 1
-
-	return_:
-	ret 
-check_bottom endp
-
-; place_flag = 0 if figure can be moved to the left, else place_flag = 1
-check_left proc
-	get_figure cur_fig
-	mov cx, 4
-	chk_fig2:
-		add bx, word ptr [si]
-		cmp word ptr [si + 16], 0 
-		je skip_chk2
-
-		cmp field[bx - 1], empty
-		jne set_flag_place2
-
-		skip_chk2:
-			add si, 2
-	loop chk_fig2
-
-	mov place_flag, 0 ; can move left
-	jmp return_2
-	set_flag_place2:
-	mov place_flag, 1 ; cannot move left
-
-	return_2:
-	ret 
-check_left endp 
-
-; place_flag = 0 if figure can be moved to the rightt, else place_flag = 1
-check_right proc
-	get_figure cur_fig
-	mov cx, 4
-	chk_fig3:
-		add bx, word ptr [si]
-		cmp word ptr [si + 24], 0 
-		je skip_chk3
-
-		cmp field[bx + 2], empty
-		jne set_flag_place3
-
-		skip_chk3:
-			add si, 2
-	loop chk_fig3
-
-	mov place_flag, 0 ; can move left
-	jmp return_3
-	set_flag_place3:
-	mov place_flag, 1 ; cannot move left
-
-	return_3:
-	ret 
-check_right endp
-
-; fills all play-field with empty cells
-clear_field proc 
-	mov cx, widt
-	get_index 1, 1
-	clr_row_screen: ; clear field
-		push cx 
-		mov cx, widt
-		clr_cell_screen:
-			mov field[bx], empty
-			inc bx
-		loop clr_cell_screen
-		sub bx, widt
-		add bx, 80 
-		pop cx
-	loop clr_row_screen
-	ret
-clear_field endp
-
 ; moves down by 1 cell every thing when collected full row (condition isn'nt checked)
 row_done proc
 	get_index 1, cor_y
@@ -228,24 +157,31 @@ row_done proc
 	ret 
 row_done endp
 
-; handle game over situation
-game_over proc 
-	inc go_flag 	; set game over flag
-	dec play_flag 	; switching to normal input mode
-	get_index 4, 11 ; position to print game over
-	lea di, field[bx]
-	lea si, gameover 
-	mov cx, go_len
-	cpy_go:			; print gameover msg in the middle of field
-		mov al, byte ptr [si]
-		mov byte ptr [di], al 
-		inc si 
-		inc di 
-	loop cpy_go
-	ret
-		gameover 	db " game is over!" ; msg of gaming over
-		go_len 		dw $-gameover 
-game_over endp
+; for figure checks if some row is done then deletes it
+check_rows proc
+	push cor_y 
+	get_figure cur_fig
+	mov cx, word ptr [si + 12] ; check all rows taken by a figure
+	chk_row:
+		push cx
+		get_index 1, cor_y
+		mov cx, widt
+		chk_cell:
+			cmp field[bx], empty
+			je skip_row
+			inc bx
+		loop chk_cell 	; check if row is done
+		call row_done
+		add score, 100
+
+		skip_row:
+		pop cx
+		inc cor_y
+	loop chk_row
+
+	pop cor_y 
+	ret 
+check_rows endp
 
 ; next_color = random color 
 set_color proc
@@ -272,31 +208,42 @@ set_figure proc
 	ret
 set_figure endp
 
-; performs rotation if flag (rot_r or rot_l) set
-rotate proc
-	; get_figure cur_fig
-	; mov dx, cor_x
-	; cmp dx, word ptr [si + 38]
-	; jl rett
-	; cmp dx, word ptr [si + 40]
-	; jg rett 
-	; mov dx, cor_y
-	; cmp dx, word ptr [si + 42]
-	; jg rett 
-	; cmp rot_r, 0
-	; je rl
-	; 	mov ax, word ptr [si + 34]
-	; 	mov cur_fig, ax
-	; rl: 
-	; cmp rot_l, 0
-	; je rett
-	; 	mov ax,  word ptr [si + 32]
-	; 	mov cur_fig, ax
-	; rett:
-		mov rot_l, 0
-		mov rot_r, 0
+; fills all play-field with empty cells
+clear_field proc 
+	mov cx, widt
+	get_index 1, 1
+	clr_row_screen: ; clear field
+		push cx 
+		mov cx, widt
+		clr_cell_screen:
+			mov field[bx], empty
+			inc bx
+		loop clr_cell_screen
+		sub bx, widt
+		add bx, 80 
+		pop cx
+	loop clr_row_screen
 	ret
-rotate endp
+clear_field endp
+
+; handle game over situation
+game_over proc 
+	inc go_flag 	; set game over flag
+	dec play_flag 	; switching to normal input mode
+	get_index 4, 11 ; position to print game over
+	lea di, field[bx]
+	lea si, gameover 
+	mov cx, go_len
+	cpy_go:			; print gameover msg in the middle of field
+		mov al, byte ptr [si]
+		mov byte ptr [di], al 
+		inc si 
+		inc di 
+	loop cpy_go
+	ret
+		gameover 	db " game is over!" ; msg of gaming over
+		go_len 		dw $-gameover 
+game_over endp
 
 ; next = random number (db), (n+1) = ((n) * a + c ) % m
 rand_next proc
@@ -359,7 +306,7 @@ print_next_fig proc
 	mov tmp_col, al
 	mov al, next_color
 	mov color, al 
-	
+
 	push cur_fig
 	mov ax, next_fig
 	mov cur_fig, ax 
@@ -373,6 +320,55 @@ print_next_fig proc
 	ret 
 		tmp_col db ?
 print_next_fig endp
+
+check_nxt proc
+	get_index old_x, old_y ; old is drawn one
+	call erase_figure ; erase current figure so it doesn't mess things up 
+
+	get_figure nxt_fig
+	get_index nxt_x, nxt_y
+	mov cx, 4 
+	chk_block:
+		add bx, word ptr [si]
+		cmp field[bx],     empty
+		jne cannot_change
+		cmp field[bx + 1], empty
+		jne cannot_change
+		add si, 2
+	loop chk_block
+
+		mov can_chg, 1
+	jmp retrn
+	cannot_change:
+		mov can_chg, 0
+	retrn:
+
+	get_index old_x, old_y ; draw current figure back
+	call draw_figure
+	ret
+check_nxt endp
+
+draw_field proc 
+	mov ah, 3 
+	mov bh, 0 
+	int 10h 
+	mov cursor, dx ; save cursor position 
+
+	mov ah, 2 
+	mov bh, 0
+	xor dx, dx 
+	int 10h ; set cursor to the top left corner
+
+	lea dx, field
+	mov ah, 9 
+	int 21h ; print out field
+
+	mov ah, 2 
+	mov bh, 0 
+	mov dx, cursor 
+	int 10h ; put cursor back
+	ret
+draw_field endp
 
 ; -------------------------------------------------------------- interrunt handlers --------------------------------------------------------------
 
@@ -478,15 +474,15 @@ handler09h proc far
 				mov go_flag, 0 ; down go flag
 				mov score, 0   ; set initial values
 				mov cor_y, 1
-				mov cor_x, 10
+				mov cor_x, 9
 				inc score_y
-				inc play_flag
 				call clear_field
 
 			normal_p:
 			xor play_flag, 1 ; toggle play flag
 			cmp play_flag, 1
 			jne outpchk
+				; each time p pressed to resume the game redraw score and next fig
 				call print_next_fig
 				call print_score
 
@@ -498,39 +494,70 @@ handler09h proc far
 
 		l9j: cmp al, 24h ; j pressed (rotate left)
 		jne l9k
-			inc rot_l
+			move_nxt
+			get_figure cur_fig
+			mov ax, word ptr [si + 8]
+			mov nxt_fig, ax
+
+			call check_nxt
+			cmp can_chg, 0
+			je outl9j
+				get_index old_x, old_y
+				call erase_figure
+				mov rem_old, 0
+				mov ax, nxt_fig
+				mov cur_fig, ax
 		outl9j: jmp not_send_code
 
 		l9k: cmp al, 25h ; k pressed (rotate right)
 		jne l9d
-			inc rot_r
+			move_nxt
+			get_figure cur_fig
+			mov ax, word ptr [si + 10]
+			mov nxt_fig, ax
+
+			call check_nxt
+			cmp can_chg, 0
+			je outl9j
+				get_index old_x, old_y
+				call erase_figure
+				mov rem_old, 0
+				mov ax, nxt_fig
+				mov cur_fig, ax
+
 		outl9k: jmp not_send_code
 
 		l9d: cmp al, 20h ; d pressed (move left)
 		jne l9f
-			get_index cor_x, cor_y
-			call check_left
-			cmp place_flag, 0
-			jne out9d
-				sub cor_x, 2 	
+			move_nxt
+			sub nxt_x, 2
+
+			call check_nxt
+			cmp can_chg, 0
+			je out9d
+				sub cor_x, 2
 		out9d: jmp not_send_code
 
 		l9f: cmp al, 21h ; f pressed (move right)
 		jne l9v
-			get_index cor_x, cor_y
-			call check_right
-			cmp place_flag, 0
-			jne out9f
+			move_nxt
+			add nxt_x, 2
+
+			call check_nxt
+			cmp can_chg, 0
+			je out9f
 				add cor_x, 2
 		out9f: jmp not_send_code
 
 		l9v: cmp al, 2fh ; v pressed (move down)
 		jne chkfp2
 			try_pos_down:
-				get_index cor_x, cor_y
-				call check_bottom
-				cmp place_flag, 0
-				jne out9v
+				move_nxt
+				inc nxt_y
+
+				call check_nxt
+				cmp can_chg, 0
+				je out9v
 					inc cor_y
 			jmp try_pos_down
 		out9v: jmp not_send_code
@@ -572,7 +599,7 @@ handler1ch proc far
 
 	inc cs:tics
 
-	cmp cs:tics, 6    ; check for tics, and update with given frequency
+	cmp cs:tics, 3   ; check for tics, and update with given frequency
 	je cont_inter
 		jmp pass_1ch
 	cont_inter: 
@@ -594,13 +621,8 @@ handler1ch proc far
 			jmp pass_draw
 		pause_game:
 
-			get_index old_x, old_y 
-			call erase_figure
-
-			mov field[bx],     '>'  ; put signal of paused '><'
-			mov field[bx  + 1],  '<'
 			inc paused
-			jmp draw_field
+			jmp print_field
 
 		cont_play:
 
@@ -611,86 +633,54 @@ handler1ch proc far
 			dec paused
 		cont_play2:
 
-			get_index old_x, old_y
-			call erase_figure
+			cmp rem_old, 0
+			je skip_remove
+				get_index old_x, old_y
+				call erase_figure
+			skip_remove:
 
-			call rotate
+			save_cords
+			move_nxt
+			inc nxt_y
 
-			get_index cor_x, cor_y
-			call draw_figure
-
-		get_index cor_x, cor_y 
-		call check_bottom
-		cmp place_flag, 0
-		jne save_and_next
-		jmp continue_fall
+			call check_nxt
+			cmp can_chg, 0 
+			je save_and_next
+			jmp continue_fall
 
 		save_and_next:
+
 			cmp cor_y, 1
 			je game_ov 
 
 			add score, 5
-			push cor_y 
-			get_figure cur_fig
-			mov cx, word ptr [si + 36] ; check all rows taken by a figure
-			chk_row:
-				push cx
-				get_index 1, cor_y
-				mov cx, widt
-				chk_cell:
-					cmp field[bx], empty
-					je skip_row
-					inc bx
-				loop chk_cell 	; check if row is done
-				call row_done
-				add score, 100
-			skip_row:
-			pop cx
-			inc cor_y
-			loop chk_row
-			pop cor_y 
+			call check_rows
 
-			cont_1csave:
 			mov cor_y, 1 ; put new up
-			mov old_y, 1
 			mov cor_x, 9
+			mov old_y, 1
+			mov old_x, 9
+			mov rem_old, 1
+
 			call set_color
 			call set_figure
 			call print_next_fig
 			call print_score
-			jmp draw_field
+
+			jmp print_field
 
 		continue_fall:
-			push cor_x
-			pop  old_x
-			push cor_y
-			pop  old_y ; save cords
 
 			inc cor_y
+			mov rem_old, 1
 
-		jmp draw_field
-			game_ov: call game_over
-		draw_field:
+		jmp print_field
 
-			mov ah, 3 
-			mov bh, 0 
-			int 10h 
-			mov cursor, dx ; save cursor position 
+		game_ov: 
+		call game_over
 
-			mov ah, 2 
-			mov bh, 0
-			xor dx, dx 
-			int 10h ; set cursor to the top left corner
-
-			lea dx, field
-			mov ah, 9 
-			int 21h ; print out field
-
-			mov ah, 2 
-			mov bh, 0 
-			mov dx, cursor 
-			int 10h ; put cursor back
-
+		print_field:
+			call draw_field
 		pass_draw:
 
 	pop di
