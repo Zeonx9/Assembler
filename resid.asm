@@ -48,23 +48,23 @@ go_len 		dw $-gameover
 rot_r 		db 0; flag if rotation to right pressed
 rot_l  		db 0; flag if totation to left pressed
 
-cur_fig 	dw 1    ; index of current figure in figures array 
+cur_fig 	dw 6    ; index of current figure in figures array 
 next_fig    dw 0
 place_flag 	dw 0    ; flag shows whether figure should be placed
 
 ; structure of each figure: 
 ; 4 words = offset related prev block, 4 words = flags for cheking, 4 words = left check, 4 words = right check
-; 2 words = indices of rotated figure, 1 word = numbers of rows taken by figure ((19 words) 38 byte per figure) 
-;			  +0              +8           +16          +24          +32+34+36
-figures		dw 0,  2, 78,  2,  0, 0, 1, 1,  1, 0, 1, 0,  0, 1, 0, 1,  0, 0, 2 ; "O" figure  0
-			dw 0, 80, 80, 80,  0, 0, 0, 1,  1, 1, 1, 1,  1, 1, 1, 1,  2, 2, 4 ; "I" figure  1
-			dw 0,  2,  2,  2,  1, 1, 1, 1,  1, 0, 0, 0,  0, 0, 0, 1,  1, 1, 1 ; rot "I"     2
-			dw 0,  2, 76,  2,  0, 1, 1, 1,  0, 0, 1, 0,  0, 1, 0, 1,  4, 4, 2 ; "S" figure  3
-			dw 0, 80,  2, 80,  0, 1, 0, 1,  1, 1, 0, 1,  0, 0, 1, 1,  3, 3, 3 ; rot "S"     4
-			dw 0,  2, 80,  2,  1, 0, 1, 1,  1, 0, 1, 0,  0, 0, 0, 1,  6, 6, 2 ; "Z" figure  5
-			dw 0, 78,  2, 78,  0, 0, 1, 1,  1, 1, 0, 1,  0, 0, 1, 1,  5, 5, 3 ; rot "Z"     6
+; 2 words = indices of rotated figure, 1 word = numbers of rows taken by figure, 3 words = rotation borders ((22 words) 44 byte per figure) 
+;			  +0              +8           +16          +24          +32+34+36 +38
+figures		dw 0,  2, 78,  2,  0, 0, 1, 1,  1, 0, 1, 0,  0, 1, 0, 1,  0, 0, 2,  1, 20, 20 ; "O" figure  0
+			dw 0, 80, 80, 80,  0, 0, 0, 1,  1, 1, 1, 1,  1, 1, 1, 1,  2, 2, 4,  1, 13, 20 ; "I" figure  1
+			dw 0,  2,  2,  2,  1, 1, 1, 1,  1, 0, 0, 0,  0, 0, 0, 1,  1, 1, 1,  1, 20, 17 ; rot "I"     2
+			dw 0,  2, 76,  2,  0, 1, 1, 1,  0, 0, 1, 0,  0, 1, 0, 1,  4, 4, 2,  1, 20, 18 ; "S" figure  3
+			dw 0, 80,  2, 80,  0, 1, 0, 1,  1, 1, 0, 1,  0, 0, 1, 1,  3, 3, 3,  2, 20, 20 ; rot "S"     4
+			dw 0,  2, 80,  2,  1, 0, 1, 1,  1, 0, 1, 0,  0, 0, 0, 1,  6, 6, 2,  2, 20, 18 ; "Z" figure  5
+			dw 0, 78,  2, 78,  0, 0, 1, 1,  0, 1, 0, 1,  1, 0, 1, 1,  5, 5, 3,  1, 15, 20 ; rot "Z"     6
 
-; --------- prodedures and macroses for resident part ---------
+; -------------------------------------------------- prodedures and macroses for resident part ---------------------------------------------------------
 
 ; bx = index of field cell with given coordinates
 get_index macro x_, y_ 
@@ -89,7 +89,7 @@ endm
 ; si = figure with given index in figures array
 get_figure macro ind 
 	mov ax, ind 
-	mov dl, 38
+	mov dl, 44
 	mul dl 
 	lea si, figures
 	add si, ax 
@@ -200,26 +200,6 @@ check_right proc
 	ret 
 check_right endp
 
-check_intersect proc 
-	get_figure cur_fig
-	mov cx, 4 
-	chk_fig4:
-		add bx, word ptr [si]
-		cmp field[bx], empty
-		jne set_flag_place4
-		cmp field[bx + 1], empty
-		jne set_flag_place4
-		add si, 2
-	loop chk_fig4
-
-	mov place_flag, 0 ; can move left
-	jmp return_4
-	set_flag_place4:
-	mov place_flag, 1 ; cannot move left
-	return_4:
-	ret 
-check_intersect endp
-
 ; fills all play-field with empty cells
 clear_field proc 
 	mov cx, flen
@@ -278,28 +258,36 @@ game_over endp
 ; color = random color 
 set_color proc
 	call rand_next
-	in_range color, next, 0, 4
-	mov al, color
+	in_range next_color, next, 0, 4
+	mov al, next_color
 	lea bx, colours
 	xlatb
-	mov color, al
+	mov next_color, al
 	ret
 set_color endp 
 
 rotate proc
 	get_figure cur_fig
+	mov dx, cor_x
+	cmp dx, word ptr [si + 38]
+	jl rett
+	cmp dx, word ptr [si + 40]
+	jg rett 
+	mov dx, cor_y
+	cmp dx, word ptr [si + 42]
+	jg rett 
 	cmp rot_r, 0
 	je rl
-		mov rot_r, 0
-		mov ax,  word ptr [si + 34]
+		mov ax, word ptr [si + 34]
 		mov cur_fig, ax
 	rl: 
 	cmp rot_l, 0
 	je rett
-		mov rot_l, 0
 		mov ax,  word ptr [si + 32]
 		mov cur_fig, ax
 	rett:
+		mov rot_l, 0
+		mov rot_r, 0
 	ret
 rotate endp
 
@@ -343,7 +331,7 @@ print_score proc
 	ret 
 print_score endp
 
-; --------- interrunt handlers ---------
+; -------------------------------------------------------------- interrunt handlers --------------------------------------------------------------
 
 ; multiplex interrupt handler to interact with tsr
 handler2fh proc far 
@@ -561,8 +549,8 @@ handler1ch proc far
 			get_index old_x, old_y 
 			call erase_figure
 
-			mov field[bx], '>' ; put signal of paused '><'
-			mov field[bx  + 1], '<'
+			mov field[bx],     '>'  ; put signal of paused '><'
+			mov field[bx  + 1],  '<'
 			inc paused
 			jmp draw_field
 
@@ -608,15 +596,17 @@ handler1ch proc far
 				loop chk_cell 	; check if row is done
 				call row_done
 				add score, 100
-				inc cor_y
 			skip_row:
 			pop cx
+			inc cor_y
 			loop chk_row
 			pop cor_y 
 
 			cont_1csave:
 			mov cor_y, 1 ; put new up
 			mov old_y, 1
+			mov al, next_color
+			mov color, al
 			call set_color
 			call print_score
 			jmp draw_field
@@ -670,7 +660,7 @@ handler1ch endp
 
 end_of_resident:
 
-; --------- non-resident part to install and uninstall program ---------
+; ------------------------------------------------ non-resident part to install and uninstall program -------------------------------------------------
 
 ; boot macro
 print_str macro str
@@ -746,6 +736,7 @@ try_to_install:
 		int 21h
 
 		call rand_seed ; initialaze random
+		call set_color
 		print_str "Installed."
 		lea dx, instruction
 		call print
