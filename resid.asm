@@ -53,22 +53,25 @@ figures		dw 0,  2, 78,  2,  0, 0, 2 ; "O" figure  0
 			dw 0, 80,  2, 80,  3, 3, 3 ; rot "S"     4
 			dw 0,  2, 80,  2,  6, 6, 2 ; "Z" figure  5
 			dw 0, 78,  2, 78,  5, 5, 3 ; rot "Z"     6
+			dw 0, 80, 80,  2, 10, 8, 3 ; "L" figure  7
+			dw 0,  2,  2, 76,  7, 9, 2 ; rot L 1	 8
+			dw 0,  2, 80, 80,  8,10, 3 ; rot L 2 	 9
+			dw 0, 76,  2,  2,  9, 7, 2 ; rot L 3 	10 
+			dw 0, 80, 78,  2, 14,12, 3 ; "J" figure 11
+			dw 0, 80,  2,  2, 11,13, 2 ; rot J 1    12
+			dw 0,  2, 78, 80, 12,14, 3 ; rot J 2    13
+			dw 0,  2,  2, 80, 13,11, 2 ; rot J 3    14
+			dw 0,  2,  2, 78, 18,16, 2 ; "T" figure 15
+			dw 0, 78,  2, 80, 15,17, 3 ; rot T 1    16
+			dw 0, 78,  2,  2, 16,18, 2 ; rot T 2    17
+			dw 0, 80,  2, 78, 17,15, 3 ; rot T 3    18 
 
 ; field is 10(20) x 20, however its actual size is 80 x 22, to get cell under current add 80 
 field		db 0c9h, widt dup(0cdh),  0bbh, 10 dup(empty), "score:  next:", 33 dup(empty), 13, 10 
-			db 20 dup(0bah, widt dup(empty), 0bah, 56 dup(empty), 13, 10)
+			db 22 dup(0bah, widt dup(empty), 0bah, 56 dup(empty), 13, 10)
 			db 0c8h, widt dup(0cdh),  0bch, 56 dup(empty), 13, 10, '$'
 
 ; -------------------------------------------------- prodedures and macroses for resident part ---------------------------------------------------------
-
-; bx = index of field cell with given coordinates
-get_index macro x_, y_ 
-	mov ax, y_
-	mov dl, 80
-	mul dl 
-	add ax, x_
-	mov bx, ax 
-endm
 
 ; dest = num % (max - min) + min
 in_range macro dest, num, min, max
@@ -79,6 +82,15 @@ in_range macro dest, num, min, max
 	div bl
 	add ah, min ; shift range
 	mov byte ptr dest, ah
+endm
+
+; bx = index of field cell with given coordinates
+get_index macro x_, y_ 
+	mov ax, y_
+	mov dl, 80
+	mul dl 
+	add ax, x_
+	mov bx, ax 
 endm
 
 ; si = figure with given index in figures array
@@ -143,14 +155,15 @@ row_done proc
 	mov cx, widt
 	clr_row: 		; clear the row and move everything down
 		push bx 
+		push cx
+		mov cx, cor_y
+		dec cx
 		move_clmn:
-			cmp field[bx], empty
-			je next_clmn
 			sub bx, 80
 			mov al, field[bx]
 			mov field[bx + 80], al
-		jmp move_clmn
-		next_clmn:
+		loop move_clmn
+		pop cx 
 		pop bx
 		inc bx
 	loop clr_row
@@ -204,13 +217,13 @@ set_figure proc
 	mov cur_fig, ax ; make active
 
 	call rand_next
-	in_range next_fig, next, 0, 7
+	in_range next_fig, next, 0, 19
 	ret
 set_figure endp
 
 ; fills all play-field with empty cells
 clear_field proc 
-	mov cx, widt
+	mov cx, 22
 	get_index 1, 1
 	clr_row_screen: ; clear field
 		push cx 
@@ -244,6 +257,37 @@ game_over proc
 		gameover 	db " game is over!" ; msg of gaming over
 		go_len 		dw $-gameover 
 game_over endp
+
+; handle pausing and resuming
+pause_resume proc 
+	cmp play_flag, 0
+	je pause_l
+		get_index 30, 16
+		mov cx, pmlen
+		erase_let:
+			mov field[bx], empty
+			inc bx
+		loop erase_let
+		call print_next_fig
+		call print_score
+	jmp ret_pr
+	pause_l:
+		get_index 30, 16
+		mov cx, pmlen
+		lea si, pause_msg
+		lea di, field[bx]
+		put_let:
+			mov al, byte ptr [si]
+			mov byte ptr [di], al
+			inc si
+			inc di 
+		loop put_let
+	ret_pr:
+		call draw_field
+	ret
+		pause_msg db "Pause"
+		pmlen     dw $ - pause_msg
+pause_resume endp 
 
 ; next = random number (db), (n+1) = ((n) * a + c ) % m
 rand_next proc
@@ -311,7 +355,7 @@ print_next_fig proc
 	mov ax, next_fig
 	mov cur_fig, ax 
 
-	get_index 42, 2
+	get_index 45, 2
 	call draw_figure ; draw it
 
 	pop cur_fig ; set everything back
@@ -480,12 +524,7 @@ handler09h proc far
 
 			normal_p:
 			xor play_flag, 1 ; toggle play flag
-			cmp play_flag, 1
-			jne outpchk
-				; each time p pressed to resume the game redraw score and next fig
-				call print_next_fig
-				call print_score
-
+			call pause_resume
 			outpchk: jmp not_send_code
 
 		chkfp: cmp play_flag, 0 ; if game is not active then keys are handled usually
@@ -504,7 +543,6 @@ handler09h proc far
 			je outl9j
 				get_index old_x, old_y
 				call erase_figure
-				mov rem_old, 0
 				mov ax, nxt_fig
 				mov cur_fig, ax
 		outl9j: jmp not_send_code
@@ -521,10 +559,8 @@ handler09h proc far
 			je outl9j
 				get_index old_x, old_y
 				call erase_figure
-				mov rem_old, 0
 				mov ax, nxt_fig
 				mov cur_fig, ax
-
 		outl9k: jmp not_send_code
 
 		l9d: cmp al, 20h ; d pressed (move left)
@@ -599,7 +635,7 @@ handler1ch proc far
 
 	inc cs:tics
 
-	cmp cs:tics, 3   ; check for tics, and update with given frequency
+	cmp cs:tics, 9    ; check for tics, and update with given frequency
 	je cont_inter
 		jmp pass_1ch
 	cont_inter: 
@@ -616,22 +652,8 @@ handler1ch proc far
 
 		cmp play_flag, 0
 		jne cont_play 
-		cmp paused, 0
-		je pause_game ; skip if paused else pause
 			jmp pass_draw
-		pause_game:
-
-			inc paused
-			jmp print_field
-
 		cont_play:
-
-		cmp play_flag, 0
-		je cont_play2
-		cmp paused, 0
-		je cont_play2 ; resume 
-			dec paused
-		cont_play2:
 
 			cmp rem_old, 0
 			je skip_remove
@@ -643,10 +665,10 @@ handler1ch proc far
 			move_nxt
 			inc nxt_y
 
-			call check_nxt
-			cmp can_chg, 0 
-			je save_and_next
-			jmp continue_fall
+		call check_nxt
+		cmp can_chg, 0 
+		je save_and_next
+		jmp continue_fall
 
 		save_and_next:
 
@@ -808,7 +830,7 @@ already_installed:
 ; variables of boot part
 off_key 	db "/off"
 flag_off	db 0
-instruction db " - - - - - - - - -  Wanna play Tetris ?) - - - - - - - - - - ", 13, 10 
+instruction db 13, 10, " - - - - - - - - -  Wanna play Tetris ?) - - - - - - - - - - ", 13, 10 
 			db " -> press <P> to start the game and pause/resume it later", 13, 10
 			db " -> press <D> to move left   and <F> to move right", 13, 10
 			db " -> press <J> to rotate left and <K> to rotate right", 13, 10
