@@ -15,6 +15,8 @@ cursor 		dw ?	; save coordinates of cursor
 
 empty 		equ ' ' ; filler of the field
 widt 		equ 20  ; length of field
+heig   		equ 22
+speed 		equ 5
 
 score 		dw 0 	; score of the curren game
 score_y 	dw 1 	; line where score is printed
@@ -67,8 +69,8 @@ figures		dw 0,  2, 78,  2,  0, 0, 2 ; "O" figure  0
 			dw 0, 80,  2, 78, 17,15, 3 ; rot T 3    18 
 
 ; field is 10(20) x 20, however its actual size is 80 x 22, to get cell under current add 80 
-field		db 0c9h, widt dup(0cdh),  0bbh, 10 dup(empty), "score:  next:", 33 dup(empty), 13, 10 
-			db 22 dup(0bah, widt dup(empty), 0bah, 56 dup(empty), 13, 10)
+field		db 0c9h, widt dup(0cdh),  0bbh, 10 dup(empty), " score:    next:", 30 dup(empty), 13, 10 
+			db heig dup(0bah, widt dup(empty), 0bah, 56 dup(empty), 13, 10)
 			db 0c8h, widt dup(0cdh),  0bch, 56 dup(empty), 13, 10, '$'
 
 ; -------------------------------------------------- prodedures and macroses for resident part ---------------------------------------------------------
@@ -223,7 +225,7 @@ set_figure endp
 
 ; fills all play-field with empty cells
 clear_field proc 
-	mov cx, 22
+	mov cx, heig
 	get_index 1, 1
 	clr_row_screen: ; clear field
 		push cx 
@@ -262,7 +264,7 @@ game_over endp
 pause_resume proc 
 	cmp play_flag, 0
 	je pause_l
-		get_index 30, 16
+		get_index 37, 12
 		mov cx, pmlen
 		erase_let:
 			mov field[bx], empty
@@ -272,7 +274,7 @@ pause_resume proc
 		call print_score
 	jmp ret_pr
 	pause_l:
-		get_index 30, 16
+		get_index 37, 12
 		mov cx, pmlen
 		lea si, pause_msg
 		lea di, field[bx]
@@ -635,7 +637,7 @@ handler1ch proc far
 
 	inc cs:tics
 
-	cmp cs:tics, 9    ; check for tics, and update with given frequency
+	cmp cs:tics, speed    ; check for tics, and update with given frequency
 	je cont_inter
 		jmp pass_1ch
 	cont_inter: 
