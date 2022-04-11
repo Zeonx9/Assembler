@@ -614,6 +614,13 @@ handler09h proc far
 		jmp dword ptr cs:previous09h
 
 	not_send_code:
+		; signal to say that key handled
+		in  al, 61h ; get code port 61h
+		or  al, 80h ; set 8 bit
+		out 61h, al ; return to the port
+		and al, 7fh ; set 0 to 8 bit
+		out 61h, al ; return to the port
+		; eoi signal
 		mov al, 20h ; send end of interrupt code to 20h code
 		out 20h, al
 		pop si
